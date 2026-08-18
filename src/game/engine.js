@@ -198,9 +198,30 @@ function applyInitialPrices(state) {
   }
 }
 
+export function resolveMibsCount(humanCount, includeMibs = false, mibsCount = 1) {
+  if (humanCount < 1 || humanCount >= 5) return 0;
+  const requested = Math.min(4, Math.max(1, Math.floor(Number(mibsCount) || 1)));
+  const room = 5 - humanCount;
+  if (humanCount === 1) return Math.min(requested, room);
+  if (humanCount === 2) return 1;
+  if (includeMibs) return Math.min(1, room);
+  return 0;
+}
+
+function mibsSeatId(index) {
+  return index === 0 ? "mibs" : `mibs-${index + 1}`;
+}
+
+function mibsSeatName(index, count, difficulty) {
+  const diff = difficulty === "easy" ? "Easy" : "Hard";
+  if (count === 1) return `M.I.B.S. (${diff})`;
+  return `M.I.B.S. ${index + 1} (${diff})`;
+}
+
 export function createGame({
   players,
   includeMibs = false,
+  mibsCount = 1,
   mibsDifficulty = "hard",
   seed = Date.now() % 2 ** 32,
 } = {}) {
@@ -209,14 +230,14 @@ export function createGame({
     name: p.name || `Player ${i + 1}`,
   }));
   if (humans.length < 1) throw new Error("Need at least one player");
-  if (humans.length + (includeMibs ? 1 : 0) > 5) {
+
+  const automas = resolveMibsCount(humans.length, includeMibs, mibsCount);
+  if (humans.length + automas > 5) {
     throw new Error("Black Friday supports at most 5 players");
   }
 
-  // Official rules: 1–2 humans always include M.I.B.S.; 5 players never do.
-  const withMibs =
-    humans.length >= 5 ? false : includeMibs || humans.length <= 2;
-  const totalPlayers = humans.length + (withMibs ? 1 : 0);
+  const withMibs = automas > 0;
+  const totalPlayers = humans.length + automas;
   const spec = boardSpec(totalPlayers >= 5 ? 5 : Math.max(2, totalPlayers));
 
   const rng = createRng(seed);
@@ -255,11 +276,11 @@ export function createGame({
   applyInitialPrices(state);
 
   const seated = [];
-  if (withMibs) {
+  for (let i = 0; i < automas; i++) {
     seated.push(
       makePlayer({
-        id: "mibs",
-        name: mibsDifficulty === "easy" ? "M.I.B.S. (Easy)" : "M.I.B.S. (Hard)",
+        id: mibsSeatId(i),
+        name: mibsSeatName(i, automas, mibsDifficulty),
         isMibs: true,
         bonusTile: null,
         mibsDifficulty,

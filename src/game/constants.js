@@ -90,13 +90,38 @@ export function priceAt(pos) {
 }
 
 /**
- * Highest token row maps to a level area. $110 (row 7) activates level 6.
- * Level 0 covers the bottom two rows; level 9 covers the top three.
+ * Printed 2023 board: briefcase numbers 0–9 sit on the right of the share
+ * table. Some areas cover two rows (curly brackets). $110 (row 7, col 6)
+ * is in the level-6 band, matching the rulebook example.
+ *
+ *   rows 0 / 1 / 2     → levels 0 / 1 / 2
+ *   rows 3–4           → level 3
+ *   rows 5 / 6         → levels 4 / 5
+ *   rows 7–8           → level 6
+ *   rows 9 / 10        → levels 7 / 8
+ *   rows 11–12         → level 9
  */
+export const LEVEL_ROWS = [
+  [0],
+  [1],
+  [2],
+  [3, 4],
+  [5],
+  [6],
+  [7, 8],
+  [9],
+  [10],
+  [11, 12],
+];
+
+const LEVEL_BY_ROW = Array(PRICE_TABLE.length).fill(0);
+for (let level = 0; level < LEVEL_ROWS.length; level++) {
+  for (const row of LEVEL_ROWS[level]) LEVEL_BY_ROW[row] = level;
+}
+
 export function levelForRow(row) {
-  if (row <= 1) return 0;
-  if (row >= 10) return 9;
-  return row - 1;
+  const r = Math.max(0, Math.min(MAX_ROW, row));
+  return LEVEL_BY_ROW[r] ?? 0;
 }
 
 export function boardSpec(playerCount) {

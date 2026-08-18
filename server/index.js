@@ -73,8 +73,8 @@ function playMibsIfNeeded(table) {
     if (!table.game || table.game.status !== "playing") return;
     const current = table.game.players[table.game.turnIndex];
     if (!current?.isMibs) return;
-    const action = decideMibsAction(table.game);
-    const result = applyAction(table.game, "mibs", action);
+    const action = decideMibsAction(table.game, current.id);
+    const result = applyAction(table.game, current.id, action);
     if (!result.ok) {
       console.warn("MIBS illegal action", result.error, action);
       return;
@@ -112,15 +112,17 @@ io.on("connection", (socket) => {
     socket.emit("you", { id: socket.id, name: info.name });
   });
 
-  socket.on("solo", ({ difficulty } = {}) => {
+  socket.on("solo", ({ difficulty, mibsCount } = {}) => {
     const info = sockets.get(socket.id);
     leaveTable(socket);
+    const automas = Math.min(4, Math.max(1, Math.floor(Number(mibsCount) || 1)));
     const table = {
       id: `t_${socket.id}`,
       code: uniqueCode(),
       status: "playing",
       maxPlayers: 1,
       includeMibs: true,
+      mibsCount: automas,
       mibsDifficulty: difficulty === "easy" ? "easy" : "hard",
       seats: [{ id: socket.id, socketId: socket.id, name: info.name }],
       game: null,
@@ -129,6 +131,7 @@ io.on("connection", (socket) => {
     table.game = createGame({
       players: table.seats,
       includeMibs: true,
+      mibsCount: automas,
       mibsDifficulty: table.mibsDifficulty,
     });
     tables.set(table.id, table);

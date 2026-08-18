@@ -37,13 +37,14 @@ const LEVELS = [
   { shareLimit: 5, goldLimit: 5, drawCount: 11 },
   { shareLimit: 5, goldLimit: 5, drawCount: 12 },
 ];
-/** Price-table rows (bottom = 0) covered by each level band 0–9. */
-const LEVEL_ROWS = [[0, 1], [2], [3], [4], [5], [6], [7], [8], [9], [10, 11, 12]];
+/** Printed 2023 board bands (bottom row = 0). $110 sits in level 6. */
+const LEVEL_ROWS = [[0], [1], [2], [3, 4], [5], [6], [7, 8], [9], [10], [11, 12]];
 
 function levelForRow(row) {
-  if (row <= 1) return 0;
-  if (row >= 10) return 9;
-  return row - 1;
+  for (let level = 0; level < LEVEL_ROWS.length; level++) {
+    if (LEVEL_ROWS[level].includes(row)) return level;
+  }
+  return 0;
 }
 
 function goldIsMajor(n) {
@@ -56,6 +57,7 @@ const socket = io();
 const state = {
   id: null,
   name: localStorage.getItem("bfd-name") || "",
+  soloMibsCount: clampMibsCount(localStorage.getItem("bfd-mibs-count")),
   screen: "lobby",
   lobby: { tables: [] },
   waiting: null,
@@ -63,6 +65,12 @@ const state = {
   error: "",
   draft: emptyDraft(),
 };
+
+function clampMibsCount(value) {
+  const n = Math.floor(Number(value));
+  if (!Number.isFinite(n)) return 3;
+  return Math.min(4, Math.max(1, n));
+}
 
 function emptyDraft() {
   return {
@@ -141,6 +149,17 @@ function renderLobby() {
         <h2>Take a seat</h2>
         <p class="muted">Speculate in shares, dump before the crash, and pile up gold. Play the official M.I.B.S. automa or match traders on other computers.</p>
         <label>Your name<br><input id="name" value="${esc(state.name)}" placeholder="Jung-hyeon" maxlength="24"></label>
+        <label>Solo automas
+          <select id="mibsCount">
+            ${[1, 2, 3, 4]
+              .map(
+                (n) =>
+                  `<option value="${n}" ${state.soloMibsCount === n ? "selected" : ""}>${n} M.I.B.S.</option>`
+              )
+              .join("")}
+          </select>
+        </label>
+        <p class="muted">One human plus up to four automas (five chairs max). They sit first and take consecutive turns.</p>
         <div class="row">
           <button class="btn gold" data-act="solo" data-diff="easy">Play vs M.I.B.S. — Easy</button>
           <button class="btn" data-act="solo" data-diff="hard">Play vs M.I.B.S. — Hard</button>
@@ -514,6 +533,10 @@ function bind() {
       socket.emit("setName", state.name);
     });
   }
+  const mibsCount = $("#mibsCount");
+  if (mibsCount) {
+    mibsCount.addEventListener("change", () => rememberMibsCount());
+  }
   const track = $("#trackColor");
   if (track) track.addEventListener("change", () => (state.draft.trackColor = track.value));
   const bonus = $("#bonus");
@@ -533,7 +556,11 @@ function onAct(e) {
   const v = state.view;
   if (act === "solo") {
     commitName();
-    socket.emit("solo", { difficulty: e.currentTarget.dataset.diff });
+    rememberMibsCount();
+    socket.emit("solo", {
+      difficulty: e.currentTarget.dataset.diff,
+      mibsCount: state.soloMibsCount,
+    });
   } else if (act === "wait") {
     commitName();
     const maxPlayers = Number($("#maxPlayers").value);
@@ -590,6 +617,12 @@ function onAct(e) {
   } else if (act === "submit") {
     submit();
   }
+}
+
+function rememberMibsCount() {
+  const el = $("#mibsCount");
+  if (el) state.soloMibsCount = clampMibsCount(el.value);
+  localStorage.setItem("bfd-mibs-count", String(state.soloMibsCount));
 }
 
 function commitName() {

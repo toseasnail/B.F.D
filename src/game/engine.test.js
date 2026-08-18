@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { COLORS, PRICE_TABLE, START_PRICE_POS, priceAt } from "./constants.js";
+import { COLORS, PRICE_TABLE, START_PRICE_POS, levelForRow, priceAt } from "./constants.js";
 import {
   applyAction,
   createGame,
@@ -25,6 +25,14 @@ describe("price table", () => {
     assert.deepEqual(priceChangeDirs(4), ["up", "up", "right"]);
     assert.deepEqual(priceChangeDirs(-1), ["down"]);
     assert.deepEqual(priceChangeDirs(-2), ["down", "left"]);
+  });
+
+  it("maps printed level bands, with $110 in level 6", () => {
+    assert.equal(priceAt({ row: 7, col: 6 }), 110);
+    assert.deepEqual(
+      PRICE_TABLE.map((_, row) => levelForRow(row)),
+      [0, 1, 2, 3, 3, 4, 5, 6, 6, 7, 8, 9, 9]
+    );
   });
 });
 
@@ -131,11 +139,54 @@ describe("M.I.B.S.", () => {
     });
     playToEnd(game);
   });
+
+  it("seats several automas in a solo game and uses the 5-player board", () => {
+    const game = createGame({
+      players: [{ id: "p1", name: "Jung-hyeon" }],
+      mibsCount: 4,
+      mibsDifficulty: "hard",
+      seed: 11,
+    });
+    assert.equal(game.players.length, 5);
+    assert.equal(game.players.filter((p) => p.isMibs).length, 4);
+    assert.deepEqual(
+      game.players.map((p) => p.id),
+      ["mibs", "mibs-2", "mibs-3", "mibs-4", "p1"]
+    );
+    assert.equal(game.players[4].bonusTile, 5);
+    assert.equal(game.spec.fivePlayer, true);
+    assert.equal(game.spec.purchaseTrackSize, 6);
+  });
+
+  it("lets each automa act from its own ledger", () => {
+    const game = createGame({
+      players: [{ id: "p1", name: "P1" }],
+      mibsCount: 2,
+      seed: 77,
+    });
+    const first = decideMibsAction(game);
+    const r1 = applyAction(game, "mibs", first);
+    assert.equal(r1.ok, true, r1.error);
+    assert.equal(game.players[game.turnIndex].id, "mibs-2");
+    const second = decideMibsAction(game);
+    const err = validateAction(game, "mibs-2", second);
+    assert.equal(err, null, err);
+  });
+
+  it("plays a full game against four easy automas", () => {
+    const game = createGame({
+      players: [{ id: "p1", name: "P1" }],
+      mibsCount: 4,
+      mibsDifficulty: "easy",
+      seed: 4242,
+    });
+    playToEnd(game);
+  });
 });
 
 function playToEnd(game) {
   let guard = 0;
-  while (game.status === "playing" && guard < 500) {
+  while (game.status === "playing" && guard < 2000) {
     guard += 1;
     const actor = game.players[game.turnIndex];
     const action = actor.isMibs ? decideMibsAction(game) : simpleHuman(game, actor);

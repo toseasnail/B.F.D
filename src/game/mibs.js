@@ -151,9 +151,11 @@ function chooseSaleTrackColor(state, player, sold, easy) {
   ]);
 }
 
-export function decideMibsAction(state) {
-  const player = state.players.find((p) => p.isMibs);
-  if (!player) throw new Error("No M.I.B.S. in this game");
+export function decideMibsAction(state, playerId) {
+  const player = playerId
+    ? state.players.find((p) => p.id === playerId)
+    : state.players[state.turnIndex];
+  if (!player?.isMibs) throw new Error("No M.I.B.S. to act");
   const easy = player.mibsDifficulty === "easy";
   const limit = shareLimit(state, player);
   const gLimit = goldLimit(state, player);
