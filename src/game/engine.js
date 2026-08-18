@@ -764,6 +764,7 @@ export function publicView(state, viewerId) {
   clone.bagCount = state.bag.length;
   clone.goldPrice = goldPrice(state);
   clone.levelInfo = currentLevelInfo(state);
+  clone.levelBlacks = [...state.levelBlacks];
   clone.pricesDisplay = {};
   for (const color of COLORS) {
     clone.pricesDisplay[color] = {

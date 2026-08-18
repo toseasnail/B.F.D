@@ -25,6 +25,32 @@ const GOLD_TRACK = [
   20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75,
   80, 85, 90, 95, 100,
 ];
+const LEVELS = [
+  { shareLimit: 1, goldLimit: 1, drawCount: 5 },
+  { shareLimit: 1, goldLimit: 1, drawCount: 6 },
+  { shareLimit: 2, goldLimit: 1, drawCount: 6 },
+  { shareLimit: 2, goldLimit: 2, drawCount: 7 },
+  { shareLimit: 3, goldLimit: 2, drawCount: 7 },
+  { shareLimit: 3, goldLimit: 3, drawCount: 8 },
+  { shareLimit: 4, goldLimit: 4, drawCount: 9 },
+  { shareLimit: 4, goldLimit: 4, drawCount: 10 },
+  { shareLimit: 5, goldLimit: 5, drawCount: 11 },
+  { shareLimit: 5, goldLimit: 5, drawCount: 12 },
+];
+/** Price-table rows (bottom = 0) covered by each level band 0–9. */
+const LEVEL_ROWS = [[0, 1], [2], [3], [4], [5], [6], [7], [8], [9], [10, 11, 12]];
+
+function levelForRow(row) {
+  if (row <= 1) return 0;
+  if (row >= 10) return 9;
+  return row - 1;
+}
+
+function goldIsMajor(n) {
+  return n === 20 || n === 100 || n % 5 === 0;
+}
+
+let prevLevel = null;
 
 const socket = io();
 const state = {
@@ -192,51 +218,46 @@ function renderGame() {
   const me = v.players.find((p) => p.id === v.you);
   const current = v.players.find((p) => p.id === v.currentPlayerId);
   const yourTurn = v.currentPlayerId === v.you && v.status === "playing";
+  const leveledUp = prevLevel !== null && v.level !== prevLevel;
+  prevLevel = v.level;
   return `
-  <div class="wrap">
-    <header class="masthead">
+  <div class="wrap play">
+    <header class="masthead compact">
       <div>
-        <small>B.F.D. DESK ${esc(v.id?.slice(-4) || "")}</small>
+        <small>B.F.D.</small>
         <h1>Black Friday</h1>
       </div>
-      <div class="tick">${yourTurn ? "YOUR TICKET" : `${esc(current?.name || "…")} IS TRADING`}</div>
+      <div class="tick">${yourTurn ? "YOUR TICKET" : `${esc(current?.name || "…")} IS TRADING`} · bag ${v.bagCount}</div>
     </header>
     ${state.error ? `<div class="banner">${esc(state.error)}</div>` : ""}
-    <div class="hud">
-      <div class="stat">Gold price<b>$${v.goldPrice}</b></div>
-      <div class="stat">Level<b>${v.level}</b><span class="muted">buy/sell ${v.levelInfo.shareLimit} · gold ${v.levelInfo.goldLimit} · draw ${v.levelInfo.drawCount}</span></div>
-      <div class="stat">Bag<b>${v.bagCount}</b></div>
-      <div class="stat">Gold bought since crash<b>${v.purchasedGold}</b></div>
-    </div>
-    <div class="board-shell">
-      ${renderGoldTrack(v)}
-      ${renderPriceGrid(v)}
-      <div class="side">
-        <h3 class="serif">Share market</h3>
-        <div class="market">
-          ${COLORS.map(
-            (c) => `<div class="bin" style="background:${COLOR_HEX[c]}"><span class="n">${v.market[c]}</span>${c}</div>`
-          ).join("")}
-        </div>
-        ${renderTracks(v)}
-        <div class="players" style="margin-top:12px">
-          ${v.players
-            .map(
-              (p) => `
-            <div class="player-card ${p.id === v.you ? "you" : ""} ${p.id === v.currentPlayerId ? "active" : ""}">
-              <div>
-                <strong>${esc(p.name)}</strong>
-                ${p.isMibs ? "<div class='muted'>Automa</div>" : ""}
-                ${p.bonusTile && !p.bonusUsed ? `<div class='muted'>Bonus ${p.bonusTile}</div>` : ""}
-              </div>
-              <div class="tick">
-                ${p.hidden ? "HIDDEN" : `$${p.cash} · ${p.shareTotal} sh · ${p.goldBars} Au`}
-              </div>
-            </div>`
-            )
-            .join("")}
-        </div>
+    <div class="felt ${leveledUp ? "level-changed" : ""}">
+      <div class="west">
+        ${renderGoldTrack(v)}
+        ${renderPriceGrid(v)}
       </div>
+      <div class="east">
+        ${renderLevelCard(v, leveledUp)}
+        ${renderMarket(v)}
+        ${renderTracks(v)}
+        ${renderPurchasedGold(v)}
+      </div>
+    </div>
+    <div class="players-row">
+      ${v.players
+        .map(
+          (p) => `
+        <div class="player-card ${p.id === v.you ? "you" : ""} ${p.id === v.currentPlayerId ? "active" : ""}">
+          <div>
+            <strong>${esc(p.name)}</strong>
+            ${p.isMibs ? "<div class='muted'>Automa</div>" : ""}
+            ${p.bonusTile && !p.bonusUsed ? `<div class='muted'>Bonus ${p.bonusTile}</div>` : ""}
+          </div>
+          <div class="tick">
+            ${p.hidden ? "HIDDEN" : `$${p.cash} · ${p.shareTotal} sh · ${p.goldBars} Au`}
+          </div>
+        </div>`
+        )
+        .join("")}
     </div>
     <div class="lower">
       ${renderHand(me, v)}
@@ -255,8 +276,17 @@ function renderGame() {
 }
 
 function renderGoldTrack(v) {
-  return `<div class="gold-track" title="Gold price">
-    ${GOLD_TRACK.map((n, i) => `<div class="gold-space ${i === v.goldIndex ? "on" : ""}">${n}${n === 100 ? " ★" : ""}</div>`).join("")}
+  return `<div class="gold-rail" title="Gold price">
+    <div class="gold-now">$${v.goldPrice}${v.goldPrice >= 100 ? " ★" : ""}</div>
+    <div class="gold-beads">
+      ${GOLD_TRACK.map((n, i) => {
+        const on = i === v.goldIndex;
+        const major = goldIsMajor(n);
+        return `<div class="bead ${on ? "on" : ""} ${major ? "major" : ""}" title="$${n}">
+          ${major || on ? `<span class="bead-lbl">${n}</span>` : ""}
+        </div>`;
+      }).join("")}
+    </div>
   </div>`;
 }
 
@@ -268,40 +298,107 @@ function renderPriceGrid(v) {
     tokens[key] ??= [];
     tokens[key].push(c);
   }
+  const blacks = v.levelBlacks || [];
   const cells = [];
   for (let r = PRICE_TABLE.length - 1; r >= 0; r--) {
+    const band = levelForRow(r);
     for (let c = 0; c < 7; c++) {
+      const cssRow = 13 - r;
       const key = `${r}-${c}`;
-      cells.push(`<div class="cell ${((r + c) % 2 === 0) ? "alt" : ""} lvl">
-        ${PRICE_TABLE[r][c]}
+      cells.push(`<div class="cell band-${band % 2} ${band === v.level ? "current-band" : ""} ${band < v.level ? "cleared-band" : ""}"
+        style="grid-row:${cssRow};grid-column:${c + 1}">
+        <span class="pv">${PRICE_TABLE[r][c]}</span>
         <div class="tokens">${(tokens[key] || [])
-          .map((col) => `<span class="dot" style="background:${COLOR_HEX[col]}" title="${col}"></span>`)
+          .map((col) => `<span class="dot" style="background:${COLOR_HEX[col]}" title="${col} $${v.pricesDisplay[col].price}"></span>`)
           .join("")}</div>
       </div>`);
     }
   }
-  return `<div class="price-grid"><div class="grid">${cells.join("")}</div></div>`;
+  const tiles = LEVEL_ROWS.map((rows, level) => {
+    const maxR = Math.max(...rows);
+    const minR = Math.min(...rows);
+    const cssStart = 13 - maxR;
+    const cssEnd = 13 - minR + 1;
+    const info = LEVELS[level];
+    const isCurrent = level === v.level;
+    const passed = level < v.level;
+    const hasBlack = level === 0 ? false : blacks[level - 1] !== false;
+    return `<div class="level-tile lv-${level} ${isCurrent ? "is-now" : ""} ${passed ? "is-passed" : ""}"
+      style="grid-row:${cssStart} / ${cssEnd};grid-column:8"
+      title="Level ${level}: buy/sell ${info.shareLimit}, gold ${info.goldLimit}, draw ${info.drawCount}">
+      <span class="lv-num">${level}</span>
+      ${hasBlack && !passed ? `<span class="lv-case"></span>` : ""}
+    </div>`;
+  }).join("");
+  return `<div class="ledger">
+    <div class="ledger-head"><span>Share price table</span><span>levels 0–9</span></div>
+    <div class="ledger-grid">${cells.join("")}${tiles}</div>
+  </div>`;
+}
+
+function renderLevelCard(v, leveledUp) {
+  const info = v.levelInfo;
+  return `<div class="level-card ${leveledUp ? "pop" : ""}">
+    <div class="level-card-tab">${v.level}</div>
+    <div class="level-card-body">
+      <div class="level-card-now">Now in effect</div>
+      <div><i>I</i> <b>${info.shareLimit}</b> buy / sell</div>
+      <div><i>II</i> <b>${info.goldLimit}</b> gold</div>
+      <div><i>III</i> draw <b>${info.drawCount}</b></div>
+    </div>
+  </div>`;
+}
+
+function renderMarket(v) {
+  return `<div class="market-cols">
+    ${COLORS.map((c) => {
+      const n = v.market[c];
+      const shown = Math.min(n, 9);
+      return `<div class="mcol" style="--c:${COLOR_HEX[c]}">
+        <div class="mstack">${Array.from({ length: shown }, () => `<span class="chip" style="background:${COLOR_HEX[c]}"></span>`).join("")}</div>
+        <div class="mcount">${n}</div>
+      </div>`;
+    }).join("")}
+  </div>`;
 }
 
 function renderTracks(v) {
   const chip = (c) => `<span class="chip" style="background:${c === "black" ? "#111" : COLOR_HEX[c]}"></span>`;
-  const list = (arr) => (arr.length ? arr.map(chip).join("") : "<span class='muted'>—</span>");
+  const slots = (arr, size) => {
+    const cells = [];
+    for (let i = 0; i < size; i++) {
+      cells.push(arr[i] ? chip(arr[i]) : `<span class="slot"></span>`);
+    }
+    return `<div class="slot-row">${cells.join("")}</div>`;
+  };
+  const buySize = v.spec?.purchaseTrackSize || 5;
+  const goldSize = v.spec?.goldTrackSize || 5;
   const sale = v.saleTracks
     .map((t, i) => {
       const chips = [];
-      for (const c of COLORS) for (let n = 0; n < t.colored[c]; n++) chips.push(chip(c));
       for (let n = 0; n < t.black; n++) chips.push(chip("black"));
-      return `<div class="track ${i === v.currentSaleTrack ? "active" : ""}">
-        <strong>Sale ${i + 1}${i === v.currentSaleTrack ? " · current" : ""}</strong>
+      for (const c of COLORS) for (let n = 0; n < t.colored[c]; n++) chips.push(chip(c));
+      return `<div class="sale-row ${i === v.currentSaleTrack ? "current-sale" : ""}">
+        <span class="sale-lbl">${i + 1}</span>
         <div class="chips">${chips.join("") || "<span class='muted'>—</span>"}</div>
       </div>`;
     })
     .join("");
-  return `<div class="tracks">
-    <div class="track"><strong>Purchase</strong><div class="chips">${list(v.purchaseTrack)}</div></div>
-    <div class="track"><strong>Gold purchase</strong><div class="chips">${list(v.goldPurchaseTrack)}</div></div>
-    ${sale}
+  return `<div class="board-tracks">
+    <div class="sale-block"><span class="east-lbl">Share sale</span>${sale}</div>
+    <div><span class="east-lbl">Share purchase</span>${slots(v.purchaseTrack, buySize)}</div>
+    <div><span class="east-lbl">Gold purchase</span>${slots(v.goldPurchaseTrack, goldSize)}</div>
   </div>`;
+}
+
+function renderPurchasedGold(v) {
+  const max = 15;
+  const pos = Math.min(max, v.purchasedGold);
+  const beads = [];
+  for (let i = 0; i <= max; i++) {
+    beads.push(`<div class="pg ${i === pos ? "on" : ""}">${i}</div>`);
+  }
+  return `<div class="purchased-gold"><span class="east-lbl">Gold bars since last price change</span><div class="pg-row">${beads.join("")}</div></div>`;
 }
 
 function renderHand(me, v) {
