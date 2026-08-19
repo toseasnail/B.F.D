@@ -11,7 +11,7 @@ npm start
 
 Open `http://localhost:3000`.
 
-- **Play vs M.I.B.S.** — solo against one to four automas (five chairs max). Easy mode buys/sells one fewer certificate and sometimes second-guesses itself. Hard mode follows the printed M.I.B.S. priorities.
+- **Play vs M.I.B.S.** — solo against one to four automas (five chairs max). Pick the chair count, then Easy or Hard. Easy mode buys/sells one fewer certificate and sometimes second-guesses itself. Hard mode follows the printed M.I.B.S. priorities.
 - **Waiting for players** — sit at a desk. Anyone else who clicks the same button (same seat count and automa setting) is matched to you. You can also share the 4-character room code.
 
 Two-human games always seat M.I.B.S. as the third trader, matching the 2023 rulebook. Five-human games never include it.

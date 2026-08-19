@@ -37,14 +37,41 @@ const LEVELS = [
   { shareLimit: 5, goldLimit: 5, drawCount: 11 },
   { shareLimit: 5, goldLimit: 5, drawCount: 12 },
 ];
-/** Printed 2023 board bands (bottom row = 0). $110 sits in level 6. */
-const LEVEL_ROWS = [[0], [1], [2], [3, 4], [5], [6], [7, 8], [9], [10], [11, 12]];
+/** Cream/green zigzag shading copied from the 2023 board (bottom row = 0). */
+const CELL_SHADE = [
+  "CCCCCCC",
+  "CCCCGGG",
+  "CGGGGGC",
+  "CGGGGCC",
+  "GGCCCCG",
+  "CCCGGGG",
+  "GGGGCCC",
+  "GCCCCGG",
+  "CCGGGGC",
+  "GGGCCCC",
+  "CCCCGGG",
+  "CGGGGGG",
+  "CCCGGGG",
+];
+/** Token cell → price-level area 0–9. $110 (row 7, col 6) is area 6. */
+const LEVEL_CELLS = [
+  [0, 0, 0, 0, 0, 0, 0],
+  [1, 1, 1, 1, 2, 2, 2],
+  [1, 2, 2, 2, 2, 2, 3],
+  [1, 2, 2, 2, 2, 3, 3],
+  [2, 2, 3, 3, 3, 3, 4],
+  [3, 3, 3, 4, 4, 4, 4],
+  [4, 4, 4, 4, 5, 5, 5],
+  [4, 5, 5, 5, 5, 6, 6],
+  [5, 5, 6, 6, 6, 6, 7],
+  [6, 6, 6, 7, 7, 7, 7],
+  [7, 7, 7, 7, 8, 8, 8],
+  [7, 8, 8, 8, 8, 8, 8],
+  [7, 7, 7, 9, 9, 9, 9],
+];
 
-function levelForRow(row) {
-  for (let level = 0; level < LEVEL_ROWS.length; level++) {
-    if (LEVEL_ROWS[level].includes(row)) return level;
-  }
-  return 0;
+function levelForCell(row, col) {
+  return LEVEL_CELLS[row]?.[col] ?? 0;
 }
 
 function goldIsMajor(n) {
@@ -149,16 +176,18 @@ function renderLobby() {
         <h2>Take a seat</h2>
         <p class="muted">Speculate in shares, dump before the crash, and pile up gold. Play the official M.I.B.S. automa or match traders on other computers.</p>
         <label>Your name<br><input id="name" value="${esc(state.name)}" placeholder="Jung-hyeon" maxlength="24"></label>
-        <label>Solo automas
-          <select id="mibsCount">
+        <div>
+          <div class="muted" style="margin-bottom:6px">Solo automas</div>
+          <div class="row">
             ${[1, 2, 3, 4]
               .map(
                 (n) =>
-                  `<option value="${n}" ${state.soloMibsCount === n ? "selected" : ""}>${n} M.I.B.S.</option>`
+                  `<button type="button" class="btn ${state.soloMibsCount === n ? "gold" : ""}" data-act="mibsCount" data-n="${n}">${n}</button>`
               )
               .join("")}
-          </select>
-        </label>
+            <span class="muted">M.I.B.S. chairs</span>
+          </div>
+        </div>
         <p class="muted">One human plus up to four automas (five chairs max). They sit first and take consecutive turns.</p>
         <div class="row">
           <button class="btn gold" data-act="solo" data-diff="easy">Play vs M.I.B.S. — Easy</button>
@@ -246,7 +275,9 @@ function renderGame() {
         <small>B.F.D.</small>
         <h1>Black Friday</h1>
       </div>
-      <div class="tick">${yourTurn ? "YOUR TICKET" : `${esc(current?.name || "…")} IS TRADING`} · bag ${v.bagCount}</div>
+      <div class="tick">${yourTurn ? "YOUR TICKET" : `${esc(current?.name || "…")} IS TRADING`} · bag ${v.bagCount}${
+        v.mibsCount > 1 ? ` · ${v.mibsCount}× M.I.B.S.` : ""
+      }</div>
     </header>
     ${state.error ? `<div class="banner">${esc(state.error)}</div>` : ""}
     <div class="felt ${leveledUp ? "level-changed" : ""}">
@@ -318,40 +349,58 @@ function renderPriceGrid(v) {
     tokens[key].push(c);
   }
   const blacks = v.levelBlacks || [];
+  const anchors = [];
+  for (let level = 0; level < 10; level++) {
+    scan: for (let r = 0; r < PRICE_TABLE.length; r++) {
+      for (let c = 6; c >= 0; c--) {
+        if (LEVEL_CELLS[r][c] === level) {
+          anchors[level] = { r, c };
+          break scan;
+        }
+      }
+    }
+  }
   const cells = [];
   for (let r = PRICE_TABLE.length - 1; r >= 0; r--) {
-    const band = levelForRow(r);
+    const cssRow = 13 - r;
+    const leftWrap = r % 2 === 1 && r < 12;
+    const rightWrap = r % 2 === 0 && r < 12;
+    cells.push(`<div class="gutter left ${leftWrap ? "wrap-up" : ""}" style="grid-row:${cssRow};grid-column:1">${
+      leftWrap ? "<span class='wrap-arrow'>↖</span>" : ""
+    }</div>`);
     for (let c = 0; c < 7; c++) {
-      const cssRow = 13 - r;
+      const band = levelForCell(r, c);
+      const shade = CELL_SHADE[r][c] === "G" ? "g" : "c";
       const key = `${r}-${c}`;
-      cells.push(`<div class="cell band-${band % 2} ${band === v.level ? "current-band" : ""} ${band < v.level ? "cleared-band" : ""}"
-        style="grid-row:${cssRow};grid-column:${c + 1}">
+      const anchored = anchors.findIndex((a) => a && a.r === r && a.c === c);
+      const info = anchored >= 0 ? LEVELS[anchored] : null;
+      const passed = anchored >= 0 && anchored < v.level;
+      const isCurrent = anchored === v.level;
+      const hasBlack = anchored > 0 && blacks[anchored - 1] !== false;
+      cells.push(`<div class="cell shade-${shade} ${band === v.level ? "current-band" : ""} ${band < v.level ? "cleared-band" : ""}"
+        style="grid-row:${cssRow};grid-column:${c + 2}"
+        title="$${PRICE_TABLE[r][c]} · level ${band}">
         <span class="pv">${PRICE_TABLE[r][c]}</span>
+        ${
+          anchored >= 0
+            ? `<span class="lv-tag on-cell ${isCurrent ? "is-now" : ""} ${passed ? "is-passed" : ""}" title="Level ${anchored}: buy/sell ${info.shareLimit}, gold ${info.goldLimit}, draw ${info.drawCount}">
+                <span class="lv-num">${anchored}</span>
+                ${hasBlack && !passed ? `<span class="lv-case"></span>` : ""}
+              </span>`
+            : ""
+        }
         <div class="tokens">${(tokens[key] || [])
           .map((col) => `<span class="dot" style="background:${COLOR_HEX[col]}" title="${col} $${v.pricesDisplay[col].price}"></span>`)
           .join("")}</div>
       </div>`);
     }
+    cells.push(`<div class="gutter right ${rightWrap ? "wrap-up" : ""}" style="grid-row:${cssRow};grid-column:9">
+      ${rightWrap ? "<span class='wrap-arrow'>↗</span>" : ""}
+    </div>`);
   }
-  const tiles = LEVEL_ROWS.map((rows, level) => {
-    const maxR = Math.max(...rows);
-    const minR = Math.min(...rows);
-    const cssStart = 13 - maxR;
-    const cssEnd = 13 - minR + 1;
-    const info = LEVELS[level];
-    const isCurrent = level === v.level;
-    const passed = level < v.level;
-    const hasBlack = level === 0 ? false : blacks[level - 1] !== false;
-    return `<div class="level-tile lv-${level} ${isCurrent ? "is-now" : ""} ${passed ? "is-passed" : ""}"
-      style="grid-row:${cssStart} / ${cssEnd};grid-column:8"
-      title="Level ${level}: buy/sell ${info.shareLimit}, gold ${info.goldLimit}, draw ${info.drawCount}">
-      <span class="lv-num">${level}</span>
-      ${hasBlack && !passed ? `<span class="lv-case"></span>` : ""}
-    </div>`;
-  }).join("");
   return `<div class="ledger">
-    <div class="ledger-head"><span>Share price table</span><span>levels 0–9</span></div>
-    <div class="ledger-grid">${cells.join("")}${tiles}</div>
+    <div class="ledger-head"><span>Share price table</span><span>zigzag levels 0–9</span></div>
+    <div class="ledger-grid">${cells.join("")}</div>
   </div>`;
 }
 
@@ -533,10 +582,6 @@ function bind() {
       socket.emit("setName", state.name);
     });
   }
-  const mibsCount = $("#mibsCount");
-  if (mibsCount) {
-    mibsCount.addEventListener("change", () => rememberMibsCount());
-  }
   const track = $("#trackColor");
   if (track) track.addEventListener("change", () => (state.draft.trackColor = track.value));
   const bonus = $("#bonus");
@@ -554,12 +599,17 @@ function bind() {
 function onAct(e) {
   const act = e.currentTarget.dataset.act;
   const v = state.view;
-  if (act === "solo") {
+  if (act === "mibsCount") {
+    state.soloMibsCount = clampMibsCount(e.currentTarget.dataset.n);
+    localStorage.setItem("bfd-mibs-count", String(state.soloMibsCount));
+    render();
+  } else if (act === "solo") {
     commitName();
-    rememberMibsCount();
+    const n = clampMibsCount(state.soloMibsCount);
     socket.emit("solo", {
       difficulty: e.currentTarget.dataset.diff,
-      mibsCount: state.soloMibsCount,
+      mibsCount: n,
+      count: n,
     });
   } else if (act === "wait") {
     commitName();
@@ -617,12 +667,6 @@ function onAct(e) {
   } else if (act === "submit") {
     submit();
   }
-}
-
-function rememberMibsCount() {
-  const el = $("#mibsCount");
-  if (el) state.soloMibsCount = clampMibsCount(el.value);
-  localStorage.setItem("bfd-mibs-count", String(state.soloMibsCount));
 }
 
 function commitName() {

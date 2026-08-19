@@ -4,13 +4,23 @@ import { Server } from "socket.io";
 import path from "path";
 import { fileURLToPath } from "url";
 import { applyAction, createGame, publicView } from "../src/game/engine.js";
+import { parseMibsCount } from "../src/game/constants.js";
 import { decideMibsAction } from "../src/game/mibs.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT) || 3000;
 
 const app = express();
-app.use(express.static(path.join(__dirname, "../public")));
+app.use(
+  express.static(path.join(__dirname, "../public"), {
+    etag: false,
+    setHeaders(res, filePath) {
+      if (filePath.endsWith(".js") || filePath.endsWith(".css") || filePath.endsWith(".html")) {
+        res.setHeader("Cache-Control", "no-store");
+      }
+    },
+  })
+);
 
 const server = http.createServer(app);
 const io = new Server(server, { cors: { origin: true } });
@@ -112,10 +122,10 @@ io.on("connection", (socket) => {
     socket.emit("you", { id: socket.id, name: info.name });
   });
 
-  socket.on("solo", ({ difficulty, mibsCount } = {}) => {
+  socket.on("solo", (payload = {}) => {
     const info = sockets.get(socket.id);
     leaveTable(socket);
-    const automas = Math.min(4, Math.max(1, Math.floor(Number(mibsCount) || 1)));
+    const automas = parseMibsCount(payload.mibsCount ?? payload.count);
     const table = {
       id: `t_${socket.id}`,
       code: uniqueCode(),
@@ -123,7 +133,7 @@ io.on("connection", (socket) => {
       maxPlayers: 1,
       includeMibs: true,
       mibsCount: automas,
-      mibsDifficulty: difficulty === "easy" ? "easy" : "hard",
+      mibsDifficulty: payload.difficulty === "easy" ? "easy" : "hard",
       seats: [{ id: socket.id, socketId: socket.id, name: info.name }],
       game: null,
       mibsTimer: null,

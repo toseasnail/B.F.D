@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { COLORS, PRICE_TABLE, START_PRICE_POS, levelForRow, priceAt } from "./constants.js";
+import { COLORS, LEVEL_CELLS, PRICE_TABLE, START_PRICE_POS, levelForCell, priceAt } from "./constants.js";
 import {
   applyAction,
   createGame,
@@ -27,12 +27,12 @@ describe("price table", () => {
     assert.deepEqual(priceChangeDirs(-2), ["down", "left"]);
   });
 
-  it("maps printed level bands, with $110 in level 6", () => {
+  it("maps printed zigzag areas, with $110 in level 6", () => {
     assert.equal(priceAt({ row: 7, col: 6 }), 110);
-    assert.deepEqual(
-      PRICE_TABLE.map((_, row) => levelForRow(row)),
-      [0, 1, 2, 3, 3, 4, 5, 6, 6, 7, 8, 9, 9]
-    );
+    assert.equal(levelForCell(7, 6), 6);
+    assert.equal(levelForCell(0, 3), 0);
+    assert.equal(levelForCell(12, 6), 9);
+    assert.deepEqual(LEVEL_CELLS[7], [4, 5, 5, 5, 5, 6, 6]);
   });
 });
 
@@ -156,6 +156,16 @@ describe("M.I.B.S.", () => {
     assert.equal(game.players[4].bonusTile, 5);
     assert.equal(game.spec.fivePlayer, true);
     assert.equal(game.spec.purchaseTrackSize, 6);
+  });
+
+  it("honours a string automa count from the lobby payload", () => {
+    const game = createGame({
+      players: [{ id: "p1", name: "P1" }],
+      mibsCount: "3",
+      seed: 5,
+    });
+    assert.equal(game.mibsCount, 3);
+    assert.equal(game.players.filter((p) => p.isMibs).length, 3);
   });
 
   it("lets each automa act from its own ledger", () => {

@@ -90,38 +90,62 @@ export function priceAt(pos) {
 }
 
 /**
- * Printed 2023 board: briefcase numbers 0–9 sit on the right of the share
- * table. Some areas cover two rows (curly brackets). $110 (row 7, col 6)
- * is in the level-6 band, matching the rulebook example.
- *
- *   rows 0 / 1 / 2     → levels 0 / 1 / 2
- *   rows 3–4           → level 3
- *   rows 5 / 6         → levels 4 / 5
- *   rows 7–8           → level 6
- *   rows 9 / 10        → levels 7 / 8
- *   rows 11–12         → level 9
+ * Cream (C) / dark-green (G) cell shading on the 2023 share table.
+ * The two colours form a zigzag staircase, not horizontal row bands.
  */
-export const LEVEL_ROWS = [
-  [0],
-  [1],
-  [2],
-  [3, 4],
-  [5],
-  [6],
-  [7, 8],
-  [9],
-  [10],
-  [11, 12],
+export const CELL_SHADE = [
+  "CCCCCCC",
+  "CCCCGGG",
+  "CGGGGGC",
+  "CGGGGCC",
+  "GGCCCCG",
+  "CCCGGGG",
+  "GGGGCCC",
+  "GCCCCGG",
+  "CCGGGGC",
+  "GGGCCCC",
+  "CCCCGGG",
+  "CGGGGGG",
+  "CCCGGGG",
 ];
 
-const LEVEL_BY_ROW = Array(PRICE_TABLE.length).fill(0);
-for (let level = 0; level < LEVEL_ROWS.length; level++) {
-  for (const row of LEVEL_ROWS[level]) LEVEL_BY_ROW[row] = level;
+/**
+ * Share-price *areas* (levels 0–9). White and dark-green regions snake
+ * up the table; a token's cell, not merely its row, decides the level.
+ * $110 (row 7, col 6) is in area 6, as in the rulebook.
+ */
+export const LEVEL_CELLS = [
+  [0, 0, 0, 0, 0, 0, 0],
+  [1, 1, 1, 1, 2, 2, 2],
+  [1, 2, 2, 2, 2, 2, 3],
+  [1, 2, 2, 2, 2, 3, 3],
+  [2, 2, 3, 3, 3, 3, 4],
+  [3, 3, 3, 4, 4, 4, 4],
+  [4, 4, 4, 4, 5, 5, 5],
+  [4, 5, 5, 5, 5, 6, 6],
+  [5, 5, 6, 6, 6, 6, 7],
+  [6, 6, 6, 7, 7, 7, 7],
+  [7, 7, 7, 7, 8, 8, 8],
+  [7, 8, 8, 8, 8, 8, 8],
+  [7, 7, 7, 9, 9, 9, 9],
+];
+
+export function levelForCell(row, col) {
+  const r = Math.max(0, Math.min(MAX_ROW, row));
+  const c = Math.max(0, Math.min(MAX_COL, col));
+  return LEVEL_CELLS[r][c];
 }
 
+/** Highest area touched by any cell in the row (for badges). */
 export function levelForRow(row) {
   const r = Math.max(0, Math.min(MAX_ROW, row));
-  return LEVEL_BY_ROW[r] ?? 0;
+  return Math.max(...LEVEL_CELLS[r]);
+}
+
+export function parseMibsCount(value) {
+  const n = Math.floor(Number(value));
+  if (!Number.isFinite(n)) return 1;
+  return Math.min(4, Math.max(1, n));
 }
 
 export function boardSpec(playerCount) {

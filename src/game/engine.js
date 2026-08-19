@@ -17,7 +17,8 @@ import {
   boardSpec,
   cloneCounts,
   emptyColorCounts,
-  levelForRow,
+  levelForCell,
+  parseMibsCount,
   priceAt,
   totalCounts,
 } from "./constants.js";
@@ -200,7 +201,7 @@ function applyInitialPrices(state) {
 
 export function resolveMibsCount(humanCount, includeMibs = false, mibsCount = 1) {
   if (humanCount < 1 || humanCount >= 5) return 0;
-  const requested = Math.min(4, Math.max(1, Math.floor(Number(mibsCount) || 1)));
+  const requested = parseMibsCount(mibsCount);
   const room = 5 - humanCount;
   if (humanCount === 1) return Math.min(requested, room);
   if (humanCount === 2) return 1;
@@ -266,6 +267,7 @@ export function createGame({
     winnerIds: [],
     scores: [],
     mibsDifficulty: withMibs ? mibsDifficulty : null,
+    mibsCount: automas,
   };
 
   setupBagAndMarket(state, spec);
@@ -445,8 +447,9 @@ function runPriceChange(state, source) {
     if (state.market[color] === 0) raiseUp(state, color);
   }
 
-  const highestRow = Math.max(...COLORS.map((c) => state.prices[c].row));
-  const newLevel = levelForRow(highestRow);
+  const newLevel = Math.max(
+    ...COLORS.map((c) => levelForCell(state.prices[c].row, state.prices[c].col))
+  );
   if (newLevel > state.level) {
     for (let lvl = state.level + 1; lvl <= newLevel; lvl++) {
       const idx = lvl - 1;
