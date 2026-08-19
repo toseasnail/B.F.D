@@ -3,7 +3,7 @@ import http from "http";
 import { Server } from "socket.io";
 import path from "path";
 import { fileURLToPath } from "url";
-import { applyAction, createGame, publicView } from "../src/game/engine.js";
+import { applyAction, createGame, publicView, skipTurn } from "../src/game/engine.js";
 import { parseSoloPayload } from "../src/game/constants.js";
 import { decideLegalMibsAction, guaranteedAction } from "../src/game/mibs.js";
 
@@ -26,7 +26,7 @@ app.use(
 const server = http.createServer(app);
 const io = new Server(server, { cors: { origin: true } });
 
-/** @type {Map<string, any>} */
+/** @type {Map<string, { name: string, tableId: string | null, playerId: string }>} */
 const sockets = new Map();
 /** @type {Map<string, Table>} */
 const tables = new Map();
@@ -42,6 +42,40 @@ function uniqueCode() {
   let c = code();
   while ([...tables.values()].some((t) => t.code === c)) c = code();
   return c;
+}
+
+function normalizePlayerId(raw, fallback) {
+  const id = String(raw || "")
+    .trim()
+    .slice(0, 64);
+  if (/^[A-Za-z0-9_-]{8,64}$/.test(id)) return id;
+  return `anon_${fallback}`;
+}
+
+function playerIdOf(socket) {
+  return normalizePlayerId(socket.handshake.auth?.playerId, socket.id);
+}
+
+function infoOf(socket) {
+  return sockets.get(socket.id);
+}
+
+function socketsForPlayer(playerId) {
+  const ids = [];
+  for (const [sid, info] of sockets) {
+    if (info.playerId === playerId) ids.push(sid);
+  }
+  return ids;
+}
+
+function emitToPlayer(playerId, event, payload) {
+  for (const sid of socketsForPlayer(playerId)) {
+    io.to(sid).emit(event, payload);
+  }
+}
+
+function tableForPlayer(playerId) {
+  return [...tables.values()].find((t) => t.seats.some((s) => s.id === playerId)) || null;
 }
 
 function lobbyPayload() {
@@ -67,7 +101,7 @@ function broadcastLobby() {
 function emitGame(table) {
   if (!table.game) return;
   for (const seat of table.seats) {
-    io.to(seat.socketId).emit("game", {
+    emitToPlayer(seat.id, "game", {
       tableId: table.id,
       code: table.code,
       view: publicView(table.game, seat.id),
@@ -93,31 +127,36 @@ function playMibsIfNeeded(table) {
       result = applyAction(table.game, current.id, action);
     }
     if (!result.ok) {
-      console.warn("MIBS illegal action", result.error, action);
-      return;
+      console.warn("MIBS illegal action; skipping turn", result.error, action);
+      skipTurn(table.game);
     }
     emitGame(table);
     playMibsIfNeeded(table);
   }, 220);
 }
 
+function makeHumanSeat(socket, name) {
+  const info = infoOf(socket);
+  return { id: info.playerId, socketId: socket.id, name };
+}
+
 function startSolo(socket, payload, extraCount) {
-  const info = sockets.get(socket.id);
+  const info = infoOf(socket);
   if (!info) return null;
   if (payload && typeof payload === "object" && payload.name) {
     info.name = String(payload.name).trim().slice(0, 24) || info.name;
   }
-  leaveTable(socket);
+  abandonTable(socket);
   const { difficulty, mibsCount: automas } = parseSoloPayload(payload, extraCount);
   const table = {
-    id: `t_${socket.id}`,
+    id: `t_${info.playerId}_${Date.now().toString(36)}`,
     code: uniqueCode(),
     status: "playing",
     maxPlayers: 1,
     includeMibs: true,
     mibsCount: automas,
     mibsDifficulty: difficulty,
-    seats: [{ id: socket.id, socketId: socket.id, name: info.name }],
+    seats: [makeHumanSeat(socket, info.name)],
     game: null,
     mibsTimer: null,
   };
@@ -135,32 +174,109 @@ function startSolo(socket, payload, extraCount) {
   return table;
 }
 
-function leaveTable(socket) {
-  const info = sockets.get(socket.id);
-  if (!info?.tableId) return;
+function abandonTable(socket) {
+  const info = infoOf(socket);
+  if (!info) return;
+  if (!info.tableId) {
+    const leftover = tableForPlayer(info.playerId);
+    if (leftover) info.tableId = leftover.id;
+  }
+  if (!info.tableId) return;
   const table = tables.get(info.tableId);
+  const playerId = info.playerId;
   info.tableId = null;
+  for (const other of sockets.values()) {
+    if (other.playerId === playerId) other.tableId = null;
+  }
   if (!table) return;
-  if (table.mibsTimer) clearTimeout(table.mibsTimer);
-  table.seats = table.seats.filter((s) => s.socketId !== socket.id);
+  if (table.mibsTimer) {
+    clearTimeout(table.mibsTimer);
+    table.mibsTimer = null;
+  }
+  table.seats = table.seats.filter((s) => s.id !== playerId);
   if (table.game) {
-    const player = table.game.players.find((p) => p.id === socket.id);
+    const player = table.game.players.find((p) => p.id === playerId);
     if (player) player.connected = false;
     emitGame(table);
   }
   if (table.seats.length === 0) tables.delete(table.id);
+  else if (table.status === "waiting") {
+    for (const seat of table.seats) emitToPlayer(seat.id, "waiting", waitingView(table));
+  }
   broadcastLobby();
 }
 
+function parkOnDisconnect(socket) {
+  const info = infoOf(socket);
+  if (!info?.tableId) return;
+  const table = tables.get(info.tableId);
+  if (!table) {
+    info.tableId = null;
+    return;
+  }
+  for (const [sid, other] of sockets) {
+    if (sid !== socket.id && other.playerId === info.playerId && other.tableId === table.id) {
+      return;
+    }
+  }
+  if (table.status === "waiting") {
+    abandonTable(socket);
+    return;
+  }
+  const seat = table.seats.find((s) => s.id === info.playerId);
+  if (seat) seat.socketId = null;
+  if (table.game) {
+    const player = table.game.players.find((p) => p.id === info.playerId);
+    if (player) player.connected = false;
+    emitGame(table);
+  }
+}
+
+function resumeSeat(socket) {
+  const info = infoOf(socket);
+  if (!info) return;
+  const table = tableForPlayer(info.playerId);
+  if (!table) return;
+  const seat = table.seats.find((s) => s.id === info.playerId);
+  seat.socketId = socket.id;
+  if (info.name && info.name !== "Trader") seat.name = info.name;
+  else info.name = seat.name;
+  info.tableId = table.id;
+  if (table.game) {
+    const player = table.game.players.find((p) => p.id === info.playerId);
+    if (player) {
+      player.connected = true;
+      player.name = seat.name;
+    }
+    emitGame(table);
+    playMibsIfNeeded(table);
+  } else if (table.status === "waiting") {
+    socket.emit("waiting", waitingView(table));
+  }
+}
+
 io.on("connection", (socket) => {
-  sockets.set(socket.id, { name: "Trader", tableId: null });
-  socket.emit("hello", { id: socket.id });
+  const playerId = playerIdOf(socket);
+  sockets.set(socket.id, { name: "Trader", tableId: null, playerId });
+  resumeSeat(socket);
+  socket.emit("hello", { id: playerId, socketId: socket.id });
   socket.emit("lobby", lobbyPayload());
 
   socket.on("setName", (name) => {
-    const info = sockets.get(socket.id);
+    const info = infoOf(socket);
     info.name = String(name || "Trader").trim().slice(0, 24) || "Trader";
-    socket.emit("you", { id: socket.id, name: info.name });
+    const table = tables.get(info.tableId);
+    if (table) {
+      const seat = table.seats.find((s) => s.id === info.playerId);
+      if (seat) seat.name = info.name;
+      const player = table.game?.players.find((p) => p.id === info.playerId);
+      if (player) player.name = info.name;
+    }
+    socket.emit("you", { id: info.playerId, name: info.name });
+  });
+
+  socket.on("resume", () => {
+    resumeSeat(socket);
   });
 
   socket.on("solo", (a, b) => {
@@ -168,8 +284,8 @@ io.on("connection", (socket) => {
   });
 
   socket.on("wait", ({ maxPlayers = 2, includeMibs = false, mibsDifficulty = "hard" } = {}) => {
-    const info = sockets.get(socket.id);
-    leaveTable(socket);
+    const info = infoOf(socket);
+    abandonTable(socket);
     const cap = Math.min(5, Math.max(2, Number(maxPlayers) || 2));
     const wantMibs = Boolean(includeMibs);
     const difficulty = mibsDifficulty === "easy" ? "easy" : "hard";
@@ -183,26 +299,26 @@ io.on("connection", (socket) => {
         t.seats.length < cap
     );
     if (existing) {
-      existing.seats.push({ id: socket.id, socketId: socket.id, name: info.name });
+      if (!existing.seats.some((s) => s.id === info.playerId)) {
+        existing.seats.push(makeHumanSeat(socket, info.name));
+      }
       info.tableId = existing.id;
       maybeStart(existing);
       broadcastLobby();
       if (existing.status === "waiting") {
-        for (const seat of existing.seats) {
-          io.to(seat.socketId).emit("waiting", waitingView(existing));
-        }
+        for (const seat of existing.seats) emitToPlayer(seat.id, "waiting", waitingView(existing));
       }
       return;
     }
 
     const table = {
-      id: `t_${socket.id}`,
+      id: `t_${info.playerId}_${Date.now().toString(36)}`,
       code: uniqueCode(),
       status: "waiting",
       maxPlayers: cap,
       includeMibs: wantMibs,
       mibsDifficulty: difficulty,
-      seats: [{ id: socket.id, socketId: socket.id, name: info.name }],
+      seats: [makeHumanSeat(socket, info.name)],
       game: null,
       mibsTimer: null,
     };
@@ -213,7 +329,7 @@ io.on("connection", (socket) => {
   });
 
   socket.on("joinTable", ({ tableId, code: joinCode } = {}) => {
-    const info = sockets.get(socket.id);
+    const info = infoOf(socket);
     const table = tableId
       ? tables.get(tableId)
       : [...tables.values()].find((t) => t.code === String(joinCode || "").toUpperCase());
@@ -221,31 +337,45 @@ io.on("connection", (socket) => {
       socket.emit("errorMessage", "That table is not waiting for players.");
       return;
     }
-    if (table.seats.some((s) => s.socketId === socket.id)) return;
+    if (table.seats.some((s) => s.id === info.playerId)) {
+      const seat = table.seats.find((s) => s.id === info.playerId);
+      seat.socketId = socket.id;
+      info.tableId = table.id;
+      socket.emit("waiting", waitingView(table));
+      return;
+    }
     if (table.seats.length >= table.maxPlayers) {
       socket.emit("errorMessage", "That table is full.");
       return;
     }
-    leaveTable(socket);
-    table.seats.push({ id: socket.id, socketId: socket.id, name: info.name });
+    abandonTable(socket);
+    table.seats.push(makeHumanSeat(socket, info.name));
     info.tableId = table.id;
     maybeStart(table);
     broadcastLobby();
     if (table.status === "waiting") {
-      for (const seat of table.seats) io.to(seat.socketId).emit("waiting", waitingView(table));
+      for (const seat of table.seats) emitToPlayer(seat.id, "waiting", waitingView(table));
     }
   });
 
   socket.on("cancelWait", () => {
-    leaveTable(socket);
+    abandonTable(socket);
     socket.emit("lobby", lobbyPayload());
   });
 
   socket.on("action", (action) => {
-    const info = sockets.get(socket.id);
+    const info = infoOf(socket);
+    if (!info) {
+      socket.emit("errorMessage", "Reconnect and stamp again.");
+      return;
+    }
+    if (!info.tableId) resumeSeat(socket);
     const table = tables.get(info.tableId);
-    if (!table?.game) return;
-    const result = applyAction(table.game, socket.id, action);
+    if (!table?.game) {
+      socket.emit("errorMessage", "The desk is not open. Refresh or start a new solo game.");
+      return;
+    }
+    const result = applyAction(table.game, info.playerId, action);
     if (!result.ok) {
       socket.emit("errorMessage", result.error);
       return;
@@ -255,13 +385,13 @@ io.on("connection", (socket) => {
   });
 
   socket.on("disconnect", () => {
-    leaveTable(socket);
+    parkOnDisconnect(socket);
     sockets.delete(socket.id);
   });
 });
 
 app.get("/api/health", (_req, res) => {
-  res.json({ ok: true, solo: true, version: 8 });
+  res.json({ ok: true, solo: true, version: 9 });
 });
 
 app.post("/api/solo", (req, res) => {
@@ -276,11 +406,13 @@ app.post("/api/solo", (req, res) => {
     res.status(500).json({ error: "Could not open a solo desk." });
     return;
   }
+  const playerId = playerIdOf(socket);
   res.json({
     ok: true,
+    tableId: table.id,
     mibsCount: table.game.mibsCount,
     players: table.game.players.map((p) => ({ id: p.id, name: p.name, isMibs: p.isMibs })),
-    view: publicView(table.game, socket.id),
+    view: publicView(table.game, playerId),
   });
 });
 
@@ -302,7 +434,7 @@ function waitingView(table) {
 function maybeStart(table) {
   if (table.status !== "waiting") return;
   if (table.seats.length < table.maxPlayers) {
-    for (const seat of table.seats) io.to(seat.socketId).emit("waiting", waitingView(table));
+    for (const seat of table.seats) emitToPlayer(seat.id, "waiting", waitingView(table));
     return;
   }
   table.status = "playing";

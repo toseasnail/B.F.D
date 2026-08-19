@@ -80,16 +80,38 @@ function goldIsMajor(n) {
 
 let prevLevel = null;
 
-const socket = io();
+function getPlayerId() {
+  let id = localStorage.getItem("bfd-player-id") || "";
+  if (!/^[A-Za-z0-9_-]{8,64}$/.test(id)) {
+    id =
+      (crypto.randomUUID && crypto.randomUUID().replaceAll("-", "")) ||
+      `p${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`;
+    id = id.replace(/[^A-Za-z0-9_-]/g, "").slice(0, 32);
+    localStorage.setItem("bfd-player-id", id);
+  }
+  return id;
+}
+
+const playerId = getPlayerId();
+const socket = io({
+  auth: { playerId },
+  reconnection: true,
+  reconnectionAttempts: Infinity,
+  reconnectionDelay: 400,
+  reconnectionDelayMax: 4000,
+});
 const state = {
-  id: null,
+  id: playerId,
   name: localStorage.getItem("bfd-name") || "",
   soloMibsCount: clampMibsCount(localStorage.getItem("bfd-mibs-count")),
   screen: "lobby",
   lobby: { tables: [] },
   waiting: null,
   view: null,
+  tableId: null,
   error: "",
+  busy: false,
+  stampTimer: null,
   draft: emptyDraft(),
 };
 
@@ -116,8 +138,29 @@ function emptyCounts() {
   return { purple: 0, yellow: 0, green: 0, blue: 0, white: 0 };
 }
 
+function clearBusy() {
+  state.busy = false;
+  if (state.stampTimer) {
+    clearTimeout(state.stampTimer);
+    state.stampTimer = null;
+  }
+}
+
+socket.on("connect", () => {
+  if (state.name) socket.emit("setName", state.name);
+  socket.emit("resume");
+  if (state.error === "Connection dropped. Reconnecting…") state.error = "";
+  render();
+});
+socket.on("disconnect", (reason) => {
+  if (state.screen === "game" || state.screen === "ended") {
+    state.error = reason === "io client disconnect" ? "" : "Connection dropped. Reconnecting…";
+    clearBusy();
+    render();
+  }
+});
 socket.on("hello", ({ id }) => {
-  state.id = id;
+  state.id = id || playerId;
   if (state.name) socket.emit("setName", state.name);
   render();
 });
@@ -134,15 +177,20 @@ socket.on("lobby", (lobby) => {
 socket.on("waiting", (waiting) => {
   state.screen = "waiting";
   state.waiting = waiting;
+  state.tableId = waiting?.tableId || state.tableId;
   render();
 });
-socket.on("game", ({ view }) => {
+socket.on("game", ({ view, tableId }) => {
+  clearBusy();
   state.screen = "game";
   state.view = view;
+  state.tableId = tableId || state.tableId;
+  state.error = "";
   if (view.status === "ended") state.screen = "ended";
   render();
 });
 socket.on("errorMessage", (message) => {
+  clearBusy();
   state.error = message;
   render();
 });
@@ -266,9 +314,15 @@ function renderGame() {
   const me = v.players.find((p) => p.id === v.you);
   const current = v.players.find((p) => p.id === v.currentPlayerId);
   const yourTurn = v.currentPlayerId === v.you && v.status === "playing";
+  const mibsTurn = Boolean(current?.isMibs) && v.status === "playing";
   const leveledUp = prevLevel !== null && v.level !== prevLevel;
   prevLevel = v.level;
   const automas = (v.players || []).filter((p) => p.isMibs).length;
+  const tick = yourTurn
+    ? "YOUR TICKET"
+    : mibsTurn
+      ? "M.I.B.S. IS STAMPING"
+      : `${esc(current?.name || "…")} IS TRADING`;
   return `
   <div class="wrap play">
     <header class="masthead compact">
@@ -276,7 +330,7 @@ function renderGame() {
         <small>B.F.D.</small>
         <h1>Black Friday</h1>
       </div>
-      <div class="tick">${yourTurn ? "YOUR TICKET" : `${esc(current?.name || "…")} IS TRADING`} · bag ${v.bagCount}${
+      <div class="tick">${tick} · bag ${v.bagCount}${
         automas ? ` · you vs ${automas} M.I.B.S.` : ""
       }</div>
     </header>
@@ -492,13 +546,21 @@ function renderActions(v, me, yourTurn) {
   const limit = v.levelInfo.shareLimit + (d.bonus === "extraBuy" || d.bonus === "extraSell" ? 1 : 0);
   const gLimit = v.levelInfo.goldLimit + (d.bonus === "extraGold" ? 1 : 0);
   const powers = v.yourPowers || [];
+  const current = v.players.find((p) => p.id === v.currentPlayerId);
+  const mibsTurn = Boolean(current?.isMibs) && v.status === "playing";
+  const canStamp = yourTurn && !state.busy && socket.connected;
+  const waitNote = yourTurn
+    ? `<p class="muted">Pick one action. Zero is legal — it still moves a share onto a track. Click a color to add, right-click to remove.</p>`
+    : mibsTurn
+      ? `<p class="muted">M.I.B.S. is stamping… your ticket unlocks when it is your turn again.</p>`
+      : `<p class="muted">Wait for your turn.</p>`;
   return `<section class="actions">
     <h3 class="serif">Ticket</h3>
-    ${yourTurn ? `<p class="muted">Pick one action. Zero is legal — it still moves a share onto a track. Click a color to add, right-click to remove.</p>` : `<p class="muted">Wait for your turn.</p>`}
+    ${waitNote}
     <div class="row">
       ${["buyShares", "sellShares", "buyGold"]
         .map(
-          (t) => `<button class="btn ${d.type === t ? "gold" : "ghost"}" data-act="type" data-type="${t}" ${yourTurn ? "" : "disabled"}>
+          (t) => `<button class="btn ${d.type === t ? "gold" : "ghost"}" data-act="type" data-type="${t}" ${yourTurn && !state.busy ? "" : "disabled"}>
             ${t === "buyShares" ? "Buy shares" : t === "sellShares" ? "Sell shares" : "Buy gold"}
           </button>`
         )
@@ -508,14 +570,14 @@ function renderActions(v, me, yourTurn) {
       d.type !== "buyGold"
         ? COLORS.map((c) => {
             const field = d.type === "buyShares" ? "buys" : "sells";
-            return `<button class="color-btn" style="background:${COLOR_HEX[c]}" data-act="inc" data-color="${c}" ${yourTurn ? "" : "disabled"}>
+            return `<button class="color-btn" style="background:${COLOR_HEX[c]}" data-act="inc" data-color="${c}" ${yourTurn && !state.busy ? "" : "disabled"}>
               ${c} $${v.pricesDisplay[c].price} · mkt ${v.market[c]}
               <span class="qty">${d[field][c]}</span>
             </button>`;
           }).join("")
-        : `<div class="row"><button class="btn ghost" data-act="goldMinus" ${yourTurn ? "" : "disabled"}>-</button>
+        : `<div class="row"><button class="btn ghost" data-act="goldMinus" ${yourTurn && !state.busy ? "" : "disabled"}>-</button>
            <span class="qty">${d.count} / ${gLimit}</span>
-           <button class="btn ghost" data-act="goldPlus" ${yourTurn ? "" : "disabled"}>+</button>
+           <button class="btn ghost" data-act="goldPlus" ${yourTurn && !state.busy ? "" : "disabled"}>+</button>
            <span>at $${v.goldPrice}</span></div>`
     }
     <label>Track color
@@ -543,7 +605,10 @@ function renderActions(v, me, yourTurn) {
           </div>`
         : ""
     }
-    <button class="btn gold" data-act="submit" ${yourTurn ? "" : "disabled"}>Stamp ticket</button>
+    <button class="btn gold" data-act="submit" ${canStamp ? "" : "disabled"}>${
+      state.busy ? "Stamping…" : "Stamp ticket"
+    }</button>
+    <button class="btn ink-ghost" data-act="lobby">Leave desk</button>
     <p class="muted">Limit this turn: ${limit} shares · ${gLimit} gold</p>
   </section>`;
 }
@@ -693,7 +758,9 @@ async function startSoloGame(difficulty, n) {
     if (!res.ok || !data.view) throw new Error(data.error || "solo failed");
     state.screen = "game";
     state.view = data.view;
+    state.tableId = data.tableId || state.tableId;
     state.error = "";
+    clearBusy();
     render();
     return;
   } catch {
@@ -702,8 +769,39 @@ async function startSoloGame(difficulty, n) {
   }
 }
 
+function legalTrackColor(v, d) {
+  if (!v) return d.trackColor;
+  if (d.type === "buyShares") {
+    const after = { ...v.market };
+    for (const c of COLORS) after[c] = Math.max(0, after[c] - (d.buys[c] || 0));
+    const bought = COLORS.filter((c) => (d.buys[c] || 0) > 0);
+    const preferred = bought.filter((c) => after[c] > 0);
+    const pool = preferred.length ? preferred : COLORS.filter((c) => after[c] > 0);
+    if (pool.length && !pool.includes(d.trackColor)) return pool[0];
+  } else if (d.type === "sellShares") {
+    const track = v.saleTracks[v.currentSaleTrack];
+    const has = (c) => (track?.colored[c] || 0) > 0;
+    const sold = COLORS.filter((c) => (d.sells[c] || 0) > 0);
+    const preferred = sold.filter(has);
+    const pool = preferred.length ? preferred : COLORS.filter(has);
+    if (pool.length && !pool.includes(d.trackColor)) return pool[0];
+  } else if (d.type === "buyGold") {
+    if (!(v.market[d.trackColor] > 0)) {
+      return COLORS.find((c) => v.market[c] > 0) || d.trackColor;
+    }
+  }
+  return d.trackColor;
+}
+
 function submit() {
+  if (state.busy) return;
+  if (!socket.connected) {
+    state.error = "Not connected. Wait a moment, then stamp again.";
+    render();
+    return;
+  }
   const d = state.draft;
+  d.trackColor = legalTrackColor(state.view, d);
   const action = {
     type: d.type,
     trackColor: d.trackColor,
@@ -717,6 +815,16 @@ function submit() {
   if (d.type === "sellShares") action.sells = { ...d.sells };
   if (d.type === "buyGold") action.count = d.count;
   state.error = "";
+  state.busy = true;
+  if (state.stampTimer) clearTimeout(state.stampTimer);
+  state.stampTimer = setTimeout(() => {
+    if (!state.busy) return;
+    state.busy = false;
+    state.stampTimer = null;
+    state.error = "The desk did not answer. Check your connection and stamp again.";
+    render();
+  }, 8000);
+  render();
   socket.emit("action", action);
 }
 

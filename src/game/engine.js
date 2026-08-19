@@ -565,6 +565,42 @@ function pickTrackColor(state, preferred, fallbackAny = true) {
   return any[0] || null;
 }
 
+/** Rewrite trackColor so a ticket is legal whenever the buy/sell/gold itself is. */
+export function normalizeAction(state, action = {}) {
+  const next = {
+    ...action,
+    buys: action.buys ? { ...action.buys } : action.buys,
+    sells: action.sells ? { ...action.sells } : action.sells,
+  };
+  if (next.type === "buyShares") {
+    const buys = next.buys || emptyColorCounts();
+    const after = cloneCounts(state.market);
+    for (const color of COLORS) after[color] = Math.max(0, after[color] - (buys[color] || 0));
+    const bought = COLORS.filter((c) => (buys[c] || 0) > 0);
+    const preferred = bought.filter((c) => after[c] > 0);
+    const pool = preferred.length ? preferred : COLORS.filter((c) => after[c] > 0);
+    if (pool.length && !pool.includes(next.trackColor)) next.trackColor = pool[0];
+  } else if (next.type === "sellShares") {
+    const sells = next.sells || emptyColorCounts();
+    const track = state.saleTracks[state.currentSaleTrack];
+    const sold = COLORS.filter((c) => (sells[c] || 0) > 0);
+    const preferred = sold.filter((c) => trackHasColor(track, c));
+    const pool = preferred.length ? preferred : COLORS.filter((c) => trackHasColor(track, c));
+    if (pool.length && !pool.includes(next.trackColor)) next.trackColor = pool[0];
+  } else if (next.type === "buyGold") {
+    if (!(state.market[next.trackColor] > 0)) {
+      next.trackColor = COLORS.find((c) => state.market[c] > 0) || next.trackColor;
+    }
+  }
+  return next;
+}
+
+export function skipTurn(state) {
+  if (state.status !== "playing") return;
+  addLog(state, `${currentPlayer(state).name} cannot stamp and passes.`);
+  nextTurn(state);
+}
+
 export function validateAction(state, playerId, action) {
   if (state.status !== "playing") return "The game is over.";
   const player = playerById(state, playerId);
@@ -685,9 +721,11 @@ function applyManipulate(state, player, action) {
 }
 
 export function applyAction(state, playerId, action) {
-  const error = validateAction(state, playerId, action);
+  const normalized = normalizeAction(state, action);
+  const error = validateAction(state, playerId, normalized);
   if (error) return { ok: false, error, state };
   const player = playerById(state, playerId);
+  action = normalized;
 
   if (action.bonus) {
     player.bonusUsed = true;
@@ -834,4 +872,4 @@ export function serializeState(state) {
   return copy;
 }
 
-export { currentPlayer, playerById, fortune, goldWealth, shareLimit, goldLimit, currentLevelInfo };
+export { currentPlayer, playerById, fortune, goldWealth, shareLimit, goldLimit, currentLevelInfo, skipTurn, normalizeAction };

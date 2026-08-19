@@ -5,8 +5,10 @@ import {
   applyAction,
   createGame,
   goldPrice,
+  normalizeAction,
   priceChangeDirs,
   sharePrice,
+  skipTurn,
   validateAction,
 } from "./engine.js";
 import { decideMibsAction } from "./mibs.js";
@@ -177,6 +179,38 @@ describe("actions", () => {
       trackColor: "purple",
     });
     assert.match(err, /turn/i);
+  });
+
+  it("rewrites a stale purple track color when buying another color", () => {
+    const game = createGame({
+      players: [{ id: "p1", name: "P1" }],
+      seed: 99,
+    });
+    game.turnIndex = game.players.findIndex((p) => p.id === "p1");
+    game.market.purple = 0;
+    game.market.yellow = 4;
+    const stale = {
+      type: "buyShares",
+      buys: { purple: 0, yellow: 1, green: 0, blue: 0, white: 0 },
+      trackColor: "purple",
+    };
+    assert.match(validateAction(game, "p1", stale), /not in the market/i);
+    assert.equal(normalizeAction(game, stale).trackColor, "yellow");
+    const result = applyAction(game, "p1", stale);
+    assert.equal(result.ok, true, result.error);
+  });
+
+  it("skips a stuck turn so the next trader can stamp", () => {
+    const game = createGame({
+      players: [
+        { id: "p1", name: "P1" },
+        { id: "p2", name: "P2" },
+      ],
+      seed: 3,
+    });
+    const first = game.players[game.turnIndex].id;
+    skipTurn(game);
+    assert.notEqual(game.players[game.turnIndex].id, first);
   });
 });
 
