@@ -261,6 +261,7 @@ export function createGame({
     goldPurchaseTrack: [],
     saleTracks: [makeSaleTrack(1), makeSaleTrack(2), makeSaleTrack(3)],
     currentSaleTrack: 0,
+    saleRestockLoop: false,
     players: [],
     turnIndex: 0,
     log: [],
@@ -463,15 +464,7 @@ function runPriceChange(state, source) {
     addLog(state, `The market heats up — level ${newLevel} is now active.`);
   }
 
-  if (source === "sale") {
-    const justUsed = state.currentSaleTrack;
-    if (justUsed === 0) state.currentSaleTrack = 1;
-    else if (justUsed === 1) state.currentSaleTrack = 2;
-    else {
-      refillCenterSaleTrack(state);
-      state.currentSaleTrack = 1;
-    }
-  }
+  if (source === "sale") advanceSaleTrack(state);
 
   const ended = goldPrice(state) >= 100;
   state.lastPriceChange = {
@@ -493,10 +486,12 @@ function runPriceChange(state, source) {
   return ended;
 }
 
-function refillCenterSaleTrack(state) {
-  const track = state.saleTracks[1];
+/** Restock a spent share-sale track: 2 of each color from the market, plus its printed black shares. */
+function refillSaleTrack(state, index) {
+  const track = state.saleTracks[index];
+  const blackTarget = index === 2 ? 3 : 2;
   for (const color of COLORS) {
-    const want = 2 - track.colored[color];
+    const want = Math.max(0, 2 - (track.colored[color] || 0));
     const take = Math.min(want, state.market[color]);
     if (take > 0) {
       takeFromMarket(state, color, take);
@@ -504,11 +499,45 @@ function refillCenterSaleTrack(state) {
       if (state.market[color] === 0) raiseRight(state, color);
     }
   }
-  const needBlack = Math.max(0, 2 - track.black);
+  const needBlack = Math.max(0, blackTarget - track.black);
   const takeBlack = Math.min(needBlack, state.bankBlack);
   track.black += takeBlack;
   state.bankBlack -= takeBlack;
-  addLog(state, "The center share-sale track is restocked.");
+  addLog(state, `Share-sale track ${index + 1} is restocked from the market.`);
+}
+
+/**
+ * Opening: 1 → 2 → 3. After all three are spent, restock 2 and use it;
+ * when 2 is spent restock 3; when 3 is spent restock 2 again.
+ */
+function advanceSaleTrack(state) {
+  const justUsed = state.currentSaleTrack;
+  if (!state.saleRestockLoop) {
+    if (justUsed === 0) {
+      state.currentSaleTrack = 1;
+      addLog(state, "Share-sale track 1 is spent. Now using track 2.");
+      return;
+    }
+    if (justUsed === 1) {
+      state.currentSaleTrack = 2;
+      addLog(state, "Share-sale track 2 is spent. Now using track 3.");
+      return;
+    }
+    state.saleRestockLoop = true;
+    refillSaleTrack(state, 1);
+    state.currentSaleTrack = 1;
+    addLog(state, "Share-sale track 3 is spent. Track 2 is restocked.");
+    return;
+  }
+  if (justUsed === 1) {
+    refillSaleTrack(state, 2);
+    state.currentSaleTrack = 2;
+    addLog(state, "Share-sale track 2 is spent. Track 3 is restocked.");
+    return;
+  }
+  refillSaleTrack(state, 1);
+  state.currentSaleTrack = 1;
+  addLog(state, "Share-sale track 3 is spent. Track 2 is restocked.");
 }
 
 function fortune(player) {

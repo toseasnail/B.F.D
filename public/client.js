@@ -507,8 +507,11 @@ function renderTracks(v) {
       </div>`;
     })
     .join("");
+  const saleNote = v.saleRestockLoop
+    ? "Tracks 2 and 3 restock from the market each time the current one is spent."
+    : "After tracks 1, 2, and 3 are spent, track 2 restocks, then 3, then 2 again.";
   return `<div class="board-tracks">
-    <div class="sale-block"><span class="east-lbl">Share sale</span>${sale}</div>
+    <div class="sale-block"><span class="east-lbl">Share sale</span>${sale}<p class="sale-note">${saleNote}</p></div>
     <div><span class="east-lbl">Share purchase</span>${slots(v.purchaseTrack, buySize)}</div>
     <div><span class="east-lbl">Gold purchase</span>${slots(v.goldPurchaseTrack, goldSize)}</div>
   </div>`;

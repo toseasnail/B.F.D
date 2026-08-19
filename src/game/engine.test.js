@@ -214,6 +214,40 @@ describe("actions", () => {
   });
 });
 
+describe("share-sale tracks", () => {
+  it("restocks track 2 after 1–3 are spent, then 3, then 2 again", () => {
+    const game = createGame({
+      players: [{ id: "p1", name: "P1" }],
+      seed: 44,
+    });
+    assert.equal(game.currentSaleTrack, 0);
+
+    triggerSalePriceChange(game);
+    assert.equal(game.currentSaleTrack, 1);
+    assert.equal(coloredOn(game.saleTracks[0]), 0);
+
+    triggerSalePriceChange(game);
+    assert.equal(game.currentSaleTrack, 2);
+    assert.equal(coloredOn(game.saleTracks[1]), 0);
+
+    triggerSalePriceChange(game);
+    assert.equal(game.currentSaleTrack, 1);
+    assert.equal(game.saleRestockLoop, true);
+    assert.ok(coloredOn(game.saleTracks[1]) > 0, "track 2 should refill after all three are spent");
+    assert.equal(coloredOn(game.saleTracks[2]), 0);
+
+    triggerSalePriceChange(game);
+    assert.equal(game.currentSaleTrack, 2);
+    assert.ok(coloredOn(game.saleTracks[2]) > 0, "track 3 should refill after track 2 is spent again");
+    assert.equal(coloredOn(game.saleTracks[1]), 0);
+
+    triggerSalePriceChange(game);
+    assert.equal(game.currentSaleTrack, 1);
+    assert.ok(coloredOn(game.saleTracks[1]) > 0, "track 2 should refill after track 3 is spent again");
+    assert.equal(coloredOn(game.saleTracks[2]), 0);
+  });
+});
+
 describe("M.I.B.S.", () => {
   it("returns a legal action on the opening turn", () => {
     const game = createGame({
@@ -341,4 +375,26 @@ function simpleHuman(state, player) {
     };
   }
   return { type: "buyGold", count: 0, trackColor: color };
+}
+
+function coloredOn(track) {
+  return COLORS.reduce((sum, color) => sum + (track.colored[color] || 0), 0);
+}
+
+function triggerSalePriceChange(game) {
+  game.bag = game.bag.filter((share) => share !== "black");
+  game.goldIndex = 0;
+  game.purchasedGold = 0;
+  const actor = game.players[game.turnIndex];
+  const track = game.saleTracks[game.currentSaleTrack];
+  for (const color of COLORS) track.colored[color] = 0;
+  track.colored.yellow = game.spec.saleTriggerRemaining + 1;
+  const result = applyAction(game, actor.id, {
+    type: "sellShares",
+    sells: { purple: 0, yellow: 0, green: 0, blue: 0, white: 0 },
+    trackColor: "yellow",
+  });
+  assert.equal(result.ok, true, result.error);
+  assert.equal(game.status, "playing");
+  game.goldIndex = 0;
 }
