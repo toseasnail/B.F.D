@@ -263,6 +263,7 @@ export function createGame({
     currentSaleTrack: 0,
     saleRestockLoop: false,
     salePriceChanges: 0,
+    salePhase: "t1",
     players: [],
     turnIndex: 0,
     log: [],
@@ -502,7 +503,10 @@ function refillCenterSaleTrack(state) {
   const takeBlack = Math.min(needBlack, state.bankBlack);
   track.black += takeBlack;
   state.bankBlack -= takeBlack;
-  addLog(state, "The center share-sale track (2) is restocked from the market.");
+  addLog(
+    state,
+    `The center share-sale track is restocked from the market (${saleColoredCount(track)} colored, ${track.black} black). Short spaces stay empty.`
+  );
 }
 
 /**
@@ -515,22 +519,28 @@ function advanceSaleTrack(state) {
   const n = state.salePriceChanges;
   if (n === 1) {
     state.currentSaleTrack = 1;
-    addLog(state, "Share-sale track 1 is spent. Now using track 2.");
+    state.salePhase = "t2";
+    addLog(state, "Share-sale track 1 is spent. Now using track 2. Do not restock yet.");
     return;
   }
   if (n === 2) {
     state.currentSaleTrack = 2;
-    addLog(state, "Share-sale track 2 is spent. Now using track 3 — do not restock the center yet.");
+    state.salePhase = "t3";
+    addLog(
+      state,
+      "Share-sale track 2 is spent. Now using track 3. Restock the center only after track 3 is spent."
+    );
     return;
   }
   state.saleRestockLoop = true;
+  state.salePhase = "center";
   refillCenterSaleTrack(state);
   state.currentSaleTrack = 1;
   addLog(
     state,
     n === 3
-      ? "Share-sale track 3 is spent. For the rest of the game only the center track is used, and it is restocked."
-      : "The center share-sale track is spent and restocked again."
+      ? "Share-sale track 3 is spent. Track 3 stays empty. Only the center is used and restocked from now on."
+      : "The center share-sale track is spent and restocked again from the market."
   );
 }
 

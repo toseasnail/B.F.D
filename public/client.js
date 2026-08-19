@@ -515,9 +515,13 @@ function renderTracks(v) {
       </div>`;
     })
     .join("");
-  const saleNote = v.saleRestockLoop
-    ? "Only the center track (2) is in play. It restocks from the market after each sale price change. Track 3 is never restocked."
-    : "Use 1, then 2, then 3. After 3 is spent, only the center (2) is used and restocked. Track 3 is never restocked.";
+  const saleNote = {
+    t1: "Opening: track 1. Next 2, then 3. Nothing restocks yet.",
+    t2: "Opening: track 2. After this price change, use track 3. Do not restock the center yet.",
+    t3: "Opening: track 3. After this price change, leftover chips go in the bag and only the center (2) restocks from the market. Track 3 stays empty.",
+    center:
+      "Late game: only the center (2) restocks from the market (2 of each color, 2 black from the bank). Track 3 is never restocked.",
+  }[v.salePhase || (v.saleRestockLoop ? "center" : "t1")];
   return `<div class="board-tracks">
     <div class="sale-block"><span class="east-lbl">Share sale</span>${sale}<p class="sale-note">${saleNote}</p></div>
     <div><span class="east-lbl">Share purchase</span>${slots(v.purchaseTrack, buySize)}</div>

@@ -224,16 +224,19 @@ describe("share-sale tracks", () => {
 
     triggerSalePriceChange(game);
     assert.equal(game.currentSaleTrack, 1);
+    assert.equal(game.salePhase, "t2");
     assert.equal(coloredOn(game.saleTracks[0]), 0);
     assert.equal(coloredOn(game.saleTracks[2]), 10, "track 3 is still the original setup");
 
     triggerSalePriceChange(game);
     assert.equal(game.currentSaleTrack, 2);
+    assert.equal(game.salePhase, "t3");
     assert.equal(coloredOn(game.saleTracks[1]), 0);
     assert.equal(coloredOn(game.saleTracks[2]), 10, "track 3 is not restocked when 2 is spent");
 
     triggerSalePriceChange(game);
     assert.equal(game.currentSaleTrack, 1);
+    assert.equal(game.salePhase, "center");
     assert.ok(coloredOn(game.saleTracks[1]) > 0, "center track restocks after 3 is spent");
     assert.equal(coloredOn(game.saleTracks[2]), 0, "track 3 is never restocked");
 

@@ -391,7 +391,7 @@ io.on("connection", (socket) => {
 });
 
 app.get("/api/health", (_req, res) => {
-  res.json({ ok: true, solo: true, version: 13 });
+  res.json({ ok: true, solo: true, version: 14 });
 });
 
 app.post("/api/solo", (req, res) => {
