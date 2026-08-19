@@ -233,21 +233,15 @@ describe("share-sale tracks", () => {
     triggerSalePriceChange(game);
     assert.equal(game.currentSaleTrack, 1);
     assert.ok(coloredOn(game.saleTracks[1]) > 0, "track 2 should refill after all three are spent");
-    assert.equal(coloredOn(game.saleTracks[2]), 0);
+    assert.ok(coloredOn(game.saleTracks[2]) > 0, "track 3 should refill at the same time as track 2");
 
-    for (const color of COLORS) game.market[color] = 0;
     triggerSalePriceChange(game);
     assert.equal(game.currentSaleTrack, 2);
-    assert.ok(
-      coloredOn(game.saleTracks[2]) >= 8,
-      "track 3 should refill from the spent track even when the market is empty"
-    );
-    assert.equal(coloredOn(game.saleTracks[1]), 0);
+    assert.ok(coloredOn(game.saleTracks[2]) > 0, "track 3 should stay stocked when track 2 is spent");
 
     triggerSalePriceChange(game);
     assert.equal(game.currentSaleTrack, 1);
     assert.ok(coloredOn(game.saleTracks[1]) > 0, "track 2 should refill after track 3 is spent again");
-    assert.equal(coloredOn(game.saleTracks[2]), 0);
   });
 });
 

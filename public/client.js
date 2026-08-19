@@ -499,17 +499,26 @@ function renderTracks(v) {
   const sale = v.saleTracks
     .map((t, i) => {
       const chips = [];
-      for (let n = 0; n < t.black; n++) chips.push(chip("black"));
-      for (const c of COLORS) for (let n = 0; n < t.colored[c]; n++) chips.push(chip(c));
-      return `<div class="sale-row ${i === v.currentSaleTrack ? "current-sale" : ""}">
+      const blackSlots = i === 2 ? 3 : i === 1 ? 2 : 1;
+      for (let n = 0; n < blackSlots; n++) {
+        chips.push(n < t.black ? chip("black") : `<span class="slot sale-slot"></span>`);
+      }
+      for (const c of COLORS) {
+        const have = t.colored[c] || 0;
+        chips.push(have > 0 ? chip(c) : `<span class="slot sale-slot"></span>`);
+        chips.push(have > 1 ? chip(c) : `<span class="slot sale-slot"></span>`);
+      }
+      return `<div class="sale-row ${i === v.currentSaleTrack ? "current-sale" : ""} ${
+        v.saleRestockLoop && i > 0 ? "can-restock" : ""
+      }">
         <span class="sale-lbl">${i + 1}</span>
-        <div class="chips">${chips.join("") || "<span class='muted'>—</span>"}</div>
+        <div class="chips">${chips.join("")}</div>
       </div>`;
     })
     .join("");
   const saleNote = v.saleRestockLoop
-    ? "Tracks 2 and 3 restock in turn. Leftover shares from the spent track fill gaps if the market is short."
-    : "After tracks 1, 2, and 3 are spent, track 2 restocks, then 3, then 2 again.";
+    ? "Tracks 2 and 3 stay in play and restock. Gold outline = current track."
+    : "Use 1, then 2, then 3. After that, tracks 2 and 3 restock and you keep alternating.";
   return `<div class="board-tracks">
     <div class="sale-block"><span class="east-lbl">Share sale</span>${sale}<p class="sale-note">${saleNote}</p></div>
     <div><span class="east-lbl">Share purchase</span>${slots(v.purchaseTrack, buySize)}</div>
