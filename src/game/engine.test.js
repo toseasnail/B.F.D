@@ -215,7 +215,7 @@ describe("actions", () => {
 });
 
 describe("share-sale tracks", () => {
-  it("restocks track 2 after 1–3 are spent, then 3, then 2 again", () => {
+  it("uses 1 then 2 then 3, then only restocks the center track", () => {
     const game = createGame({
       players: [{ id: "p1", name: "P1" }],
       seed: 44,
@@ -225,23 +225,22 @@ describe("share-sale tracks", () => {
     triggerSalePriceChange(game);
     assert.equal(game.currentSaleTrack, 1);
     assert.equal(coloredOn(game.saleTracks[0]), 0);
+    assert.equal(coloredOn(game.saleTracks[2]), 10, "track 3 is still the original setup");
 
     triggerSalePriceChange(game);
     assert.equal(game.currentSaleTrack, 2);
     assert.equal(coloredOn(game.saleTracks[1]), 0);
+    assert.equal(coloredOn(game.saleTracks[2]), 10, "track 3 is not restocked when 2 is spent");
 
     triggerSalePriceChange(game);
     assert.equal(game.currentSaleTrack, 1);
-    assert.ok(coloredOn(game.saleTracks[1]) > 0, "track 2 should refill after all three are spent");
-    assert.ok(coloredOn(game.saleTracks[2]) > 0, "track 3 should refill at the same time as track 2");
+    assert.ok(coloredOn(game.saleTracks[1]) > 0, "center track restocks after 3 is spent");
+    assert.equal(coloredOn(game.saleTracks[2]), 0, "track 3 is never restocked");
 
     triggerSalePriceChange(game);
-    assert.equal(game.currentSaleTrack, 2);
-    assert.ok(coloredOn(game.saleTracks[2]) > 0, "track 3 should stay stocked when track 2 is spent");
-
-    triggerSalePriceChange(game);
-    assert.equal(game.currentSaleTrack, 1);
-    assert.ok(coloredOn(game.saleTracks[1]) > 0, "track 2 should refill after track 3 is spent again");
+    assert.equal(game.currentSaleTrack, 1, "stay on the center track");
+    assert.ok(coloredOn(game.saleTracks[1]) > 0, "center track restocks again");
+    assert.equal(coloredOn(game.saleTracks[2]), 0);
   });
 });
 

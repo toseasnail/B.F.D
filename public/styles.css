@@ -397,9 +397,10 @@ input, select {
 .sale-slot { width: 16px; height: 12px; }
 .sale-lbl {
   font-family: "IBM Plex Mono", monospace;
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 700;
-  width: 14px;
+  width: 72px;
+  flex-shrink: 0;
 }
 .sale-note {
   margin: 6px 0 0;

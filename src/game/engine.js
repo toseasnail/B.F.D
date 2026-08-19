@@ -386,7 +386,6 @@ function runPriceChange(state, source) {
   const drawn = drawFromBag(state, drawN);
   const counts = emptyColorCounts();
   let black = 0;
-  const saleDump = [];
   for (const share of drawn) {
     if (share === "black") black += 1;
     else counts[share] += 1;
@@ -437,12 +436,14 @@ function runPriceChange(state, source) {
     state.goldPurchaseTrack = [];
   } else if (source === "sale") {
     const track = state.saleTracks[state.currentSaleTrack];
+    const dumped = [];
     for (const color of COLORS) {
-      for (let i = 0; i < track.colored[color]; i++) saleDump.push(color);
+      for (let i = 0; i < track.colored[color]; i++) dumped.push(color);
       track.colored[color] = 0;
     }
-    for (let i = 0; i < track.black; i++) saleDump.push("black");
+    for (let i = 0; i < track.black; i++) dumped.push("black");
     track.black = 0;
+    putInBag(state, dumped);
   }
 
   for (const color of COLORS) {
@@ -464,10 +465,7 @@ function runPriceChange(state, source) {
     addLog(state, `The market heats up — level ${newLevel} is now active.`);
   }
 
-  if (source === "sale") {
-    advanceSaleTrack(state, saleDump);
-    putInBag(state, saleDump);
-  }
+  if (source === "sale") advanceSaleTrack(state);
 
   const ended = goldPrice(state) >= 100;
   state.lastPriceChange = {
@@ -489,69 +487,30 @@ function runPriceChange(state, source) {
   return ended;
 }
 
-/** Restock a spent share-sale track: 2 of each color, plus its printed black shares.
- *  Market first, then leftover chips from the track just spent, then the bag. */
-function takeFromPile(pile, color, n) {
-  let taken = 0;
-  for (let i = pile.length - 1; i >= 0 && taken < n; i--) {
-    if (pile[i] === color) {
-      pile.splice(i, 1);
-      taken += 1;
-    }
-  }
-  return taken;
-}
-
-function takeFromBagByColor(state, color, n) {
-  let taken = 0;
-  for (let i = state.bag.length - 1; i >= 0 && taken < n; i--) {
-    if (state.bag[i] === color) {
-      state.bag.splice(i, 1);
-      taken += 1;
-    }
-  }
-  return taken;
-}
-
-function takeForRefill(state, color, n, pile) {
-  let got = 0;
-  const fromMarket = Math.min(n, state.market[color] || 0);
-  if (fromMarket > 0) {
-    takeFromMarket(state, color, fromMarket);
-    got += fromMarket;
-    if (state.market[color] === 0) raiseRight(state, color);
-  }
-  if (got < n) got += takeFromPile(pile, color, n - got);
-  if (got < n) got += takeFromBagByColor(state, color, n - got);
-  return got;
-}
-
-function refillSaleTrack(state, index, pile = []) {
-  const track = state.saleTracks[index];
-  const blackTarget = index === 2 ? 3 : 2;
+/** Official restock: only the center (track 2). 2 of each color from the market, 2 black from the bank. */
+function refillCenterSaleTrack(state) {
+  const track = state.saleTracks[1];
   for (const color of COLORS) {
     const want = Math.max(0, 2 - (track.colored[color] || 0));
-    if (want) track.colored[color] += takeForRefill(state, color, want, pile);
+    const take = Math.min(want, state.market[color] || 0);
+    if (!take) continue;
+    takeFromMarket(state, color, take);
+    track.colored[color] += take;
+    if (state.market[color] === 0) raiseRight(state, color);
   }
-  const needBlack = Math.max(0, blackTarget - track.black);
-  const fromBank = Math.min(needBlack, state.bankBlack);
-  track.black += fromBank;
-  state.bankBlack -= fromBank;
-  let stillBlack = needBlack - fromBank;
-  if (stillBlack > 0) {
-    const fromPile = takeFromPile(pile, "black", stillBlack);
-    track.black += fromPile;
-    stillBlack -= fromPile;
-  }
-  if (stillBlack > 0) track.black += takeFromBagByColor(state, "black", stillBlack);
-  addLog(state, `Share-sale track ${index + 1} is restocked.`);
+  const needBlack = Math.max(0, 2 - track.black);
+  const takeBlack = Math.min(needBlack, state.bankBlack);
+  track.black += takeBlack;
+  state.bankBlack -= takeBlack;
+  addLog(state, "The center share-sale track (2) is restocked from the market.");
 }
 
 /**
- * Opening: 1 → 2 → 3. After all three are spent, restock 2 and 3 together,
- * play on 2, then 3, then 2 again, restocking the track you switch to.
+ * Opening: 1 → 2 → 3 (no restock). After the third track is spent, only the
+ * center track is used for the rest of the game, and it is restocked each time.
+ * Track 3 is never restocked.
  */
-function advanceSaleTrack(state, pile = []) {
+function advanceSaleTrack(state) {
   state.salePriceChanges = (state.salePriceChanges || 0) + 1;
   const n = state.salePriceChanges;
   if (n === 1) {
@@ -561,27 +520,18 @@ function advanceSaleTrack(state, pile = []) {
   }
   if (n === 2) {
     state.currentSaleTrack = 2;
-    addLog(state, "Share-sale track 2 is spent. Now using track 3.");
+    addLog(state, "Share-sale track 2 is spent. Now using track 3 — do not restock the center yet.");
     return;
   }
   state.saleRestockLoop = true;
-  if (n === 3) {
-    // Dump was track 3: put those leftovers back onto 3 first, then fill 2 from the market.
-    refillSaleTrack(state, 2, pile);
-    refillSaleTrack(state, 1, pile);
-    state.currentSaleTrack = 1;
-    addLog(state, "Tracks 2 and 3 are restocked. Now using track 2.");
-    return;
-  }
-  if (n % 2 === 0) {
-    refillSaleTrack(state, 2, pile);
-    state.currentSaleTrack = 2;
-    addLog(state, "Share-sale track 2 is spent. Track 3 is restocked.");
-    return;
-  }
-  refillSaleTrack(state, 1, pile);
+  refillCenterSaleTrack(state);
   state.currentSaleTrack = 1;
-  addLog(state, "Share-sale track 3 is spent. Track 2 is restocked.");
+  addLog(
+    state,
+    n === 3
+      ? "Share-sale track 3 is spent. For the rest of the game only the center track is used, and it is restocked."
+      : "The center share-sale track is spent and restocked again."
+  );
 }
 
 function fortune(player) {

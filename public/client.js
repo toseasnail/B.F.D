@@ -508,17 +508,16 @@ function renderTracks(v) {
         chips.push(have > 0 ? chip(c) : `<span class="slot sale-slot"></span>`);
         chips.push(have > 1 ? chip(c) : `<span class="slot sale-slot"></span>`);
       }
-      return `<div class="sale-row ${i === v.currentSaleTrack ? "current-sale" : ""} ${
-        v.saleRestockLoop && i > 0 ? "can-restock" : ""
-      }">
-        <span class="sale-lbl">${i + 1}</span>
+      const names = ["1 (once)", "2 (center)", "3 (once)"];
+      return `<div class="sale-row ${i === v.currentSaleTrack ? "current-sale" : ""}">
+        <span class="sale-lbl">${names[i]}</span>
         <div class="chips">${chips.join("")}</div>
       </div>`;
     })
     .join("");
   const saleNote = v.saleRestockLoop
-    ? "Tracks 2 and 3 stay in play and restock. Gold outline = current track."
-    : "Use 1, then 2, then 3. After that, tracks 2 and 3 restock and you keep alternating.";
+    ? "Only the center track (2) is in play. It restocks from the market after each sale price change. Track 3 is never restocked."
+    : "Use 1, then 2, then 3. After 3 is spent, only the center (2) is used and restocked. Track 3 is never restocked.";
   return `<div class="board-tracks">
     <div class="sale-block"><span class="east-lbl">Share sale</span>${sale}<p class="sale-note">${saleNote}</p></div>
     <div><span class="east-lbl">Share purchase</span>${slots(v.purchaseTrack, buySize)}</div>
