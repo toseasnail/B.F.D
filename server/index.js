@@ -284,6 +284,10 @@ app.post("/api/solo", (req, res) => {
   });
 });
 
+app.get("*", (_req, res) => {
+  res.sendFile(path.join(__dirname, "../public/index.html"));
+});
+
 function waitingView(table) {
   return {
     tableId: table.id,
@@ -314,7 +318,7 @@ function maybeStart(table) {
 export { app, server, io };
 
 if (process.env.BFD_NO_LISTEN !== "1") {
-  server.listen(PORT, () => {
+  server.listen(PORT, "0.0.0.0", () => {
     console.log(`Black Friday Desk listening on http://localhost:${PORT}`);
   });
 }
