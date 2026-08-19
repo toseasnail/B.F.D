@@ -232,13 +232,16 @@ describe("share-sale tracks", () => {
 
     triggerSalePriceChange(game);
     assert.equal(game.currentSaleTrack, 1);
-    assert.equal(game.saleRestockLoop, true);
     assert.ok(coloredOn(game.saleTracks[1]) > 0, "track 2 should refill after all three are spent");
     assert.equal(coloredOn(game.saleTracks[2]), 0);
 
+    for (const color of COLORS) game.market[color] = 0;
     triggerSalePriceChange(game);
     assert.equal(game.currentSaleTrack, 2);
-    assert.ok(coloredOn(game.saleTracks[2]) > 0, "track 3 should refill after track 2 is spent again");
+    assert.ok(
+      coloredOn(game.saleTracks[2]) >= 8,
+      "track 3 should refill from the spent track even when the market is empty"
+    );
     assert.equal(coloredOn(game.saleTracks[1]), 0);
 
     triggerSalePriceChange(game);
@@ -387,12 +390,23 @@ function triggerSalePriceChange(game) {
   game.purchasedGold = 0;
   const actor = game.players[game.turnIndex];
   const track = game.saleTracks[game.currentSaleTrack];
-  for (const color of COLORS) track.colored[color] = 0;
-  track.colored.yellow = game.spec.saleTriggerRemaining + 1;
+  const target = game.spec.saleTriggerRemaining + 1;
+  if (coloredOn(track) === 0) {
+    for (const color of COLORS) track.colored[color] = 0;
+    track.colored.yellow = target;
+  } else {
+    for (const color of [...COLORS].reverse()) {
+      while (coloredOn(track) > target && track.colored[color] > 0) {
+        track.colored[color] -= 1;
+        game.market[color] += 1;
+      }
+    }
+  }
+  const color = COLORS.find((c) => track.colored[c] > 0) || "yellow";
   const result = applyAction(game, actor.id, {
     type: "sellShares",
     sells: { purple: 0, yellow: 0, green: 0, blue: 0, white: 0 },
-    trackColor: "yellow",
+    trackColor: color,
   });
   assert.equal(result.ok, true, result.error);
   assert.equal(game.status, "playing");

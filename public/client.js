@@ -508,7 +508,7 @@ function renderTracks(v) {
     })
     .join("");
   const saleNote = v.saleRestockLoop
-    ? "Tracks 2 and 3 restock from the market each time the current one is spent."
+    ? "Tracks 2 and 3 restock in turn. Leftover shares from the spent track fill gaps if the market is short."
     : "After tracks 1, 2, and 3 are spent, track 2 restocks, then 3, then 2 again.";
   return `<div class="board-tracks">
     <div class="sale-block"><span class="east-lbl">Share sale</span>${sale}<p class="sale-note">${saleNote}</p></div>
