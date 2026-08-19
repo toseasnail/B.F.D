@@ -37,38 +37,25 @@ const LEVELS = [
   { shareLimit: 5, goldLimit: 5, drawCount: 11 },
   { shareLimit: 5, goldLimit: 5, drawCount: 12 },
 ];
-/** Cream/green zigzag shading copied from the 2023 board (bottom row = 0). */
-const CELL_SHADE = [
-  "CCCCCCC",
-  "CCCCGGG",
-  "CGGGGGC",
-  "CGGGGCC",
-  "GGCCCCG",
-  "CCCGGGG",
-  "GGGGCCC",
-  "GCCCCGG",
-  "CCGGGGC",
-  "GGGCCCC",
-  "CCCCGGG",
-  "CGGGGGG",
-  "CCCGGGG",
-];
-/** Token cell → price-level area 0–9. $110 (row 7, col 6) is area 6. */
+/** Token cell → price-level area 0–9. Diagonal chevrons; 1f = bottom. */
 const LEVEL_CELLS = [
   [0, 0, 0, 0, 0, 0, 0],
   [1, 1, 1, 1, 2, 2, 2],
-  [1, 2, 2, 2, 2, 2, 3],
-  [1, 2, 2, 2, 2, 3, 3],
-  [2, 2, 3, 3, 3, 3, 4],
-  [3, 3, 3, 4, 4, 4, 4],
-  [4, 4, 4, 4, 5, 5, 5],
-  [4, 5, 5, 5, 5, 6, 6],
-  [5, 5, 6, 6, 6, 6, 7],
-  [6, 6, 6, 7, 7, 7, 7],
-  [7, 7, 7, 7, 8, 8, 8],
-  [7, 8, 8, 8, 8, 8, 8],
-  [7, 7, 7, 9, 9, 9, 9],
+  [1, 2, 2, 2, 2, 1, 1],
+  [2, 2, 1, 1, 1, 1, 3],
+  [1, 1, 1, 3, 3, 3, 3],
+  [3, 3, 3, 3, 4, 4, 4],
+  [3, 4, 4, 4, 4, 5, 5],
+  [4, 4, 5, 5, 5, 5, 6],
+  [5, 5, 5, 5, 6, 6, 6],
+  [5, 5, 5, 5, 6, 6, 6],
+  [5, 6, 6, 6, 6, 7, 7],
+  [6, 6, 7, 7, 8, 8, 9],
+  [8, 8, 8, 9, 9, 9, 9],
 ];
+const CELL_SHADE = LEVEL_CELLS.map((row) =>
+  row.map((level) => (level === 0 || level % 2 === 1 ? "C" : "G")).join("")
+);
 
 function levelForCell(row, col) {
   return LEVEL_CELLS[row]?.[col] ?? 0;
@@ -190,8 +177,8 @@ function renderLobby() {
         </div>
         <p class="muted">One human plus up to four automas (five chairs max). They sit first and take consecutive turns.</p>
         <div class="row">
-          <button class="btn gold" data-act="solo" data-diff="easy">Play vs M.I.B.S. — Easy</button>
-          <button class="btn" data-act="solo" data-diff="hard">Play vs M.I.B.S. — Hard</button>
+          <button class="btn gold" data-act="solo" data-diff="easy" data-mibs="${state.soloMibsCount}">Play vs ${state.soloMibsCount} Easy M.I.B.S.</button>
+          <button class="btn" data-act="solo" data-diff="hard" data-mibs="${state.soloMibsCount}">Play vs ${state.soloMibsCount} Hard M.I.B.S.</button>
         </div>
         <hr>
         <h3 class="serif">Waiting for players</h3>
@@ -605,12 +592,10 @@ function onAct(e) {
     render();
   } else if (act === "solo") {
     commitName();
-    const n = clampMibsCount(state.soloMibsCount);
-    socket.emit("solo", {
-      difficulty: e.currentTarget.dataset.diff,
-      mibsCount: n,
-      count: n,
-    });
+    const n = clampMibsCount(e.currentTarget.dataset.mibs || state.soloMibsCount);
+    state.soloMibsCount = n;
+    localStorage.setItem("bfd-mibs-count", String(n));
+    socket.emit("solo", e.currentTarget.dataset.diff, n);
   } else if (act === "wait") {
     commitName();
     const maxPlayers = Number($("#maxPlayers").value);

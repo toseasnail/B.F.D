@@ -215,8 +215,7 @@ function mibsSeatId(index) {
 
 function mibsSeatName(index, count, difficulty) {
   const diff = difficulty === "easy" ? "Easy" : "Hard";
-  if (count === 1) return `M.I.B.S. (${diff})`;
-  return `M.I.B.S. ${index + 1} (${diff})`;
+  return `M.I.B.S. ${index + 1}/${count} (${diff})`;
 }
 
 export function createGame({

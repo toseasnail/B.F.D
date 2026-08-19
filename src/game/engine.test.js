@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { COLORS, LEVEL_CELLS, PRICE_TABLE, START_PRICE_POS, levelForCell, priceAt } from "./constants.js";
+import { COLORS, LEVEL_CELLS, PRICE_TABLE, START_PRICE_POS, levelForCell, parseSoloPayload, priceAt } from "./constants.js";
 import {
   applyAction,
   createGame,
@@ -32,7 +32,35 @@ describe("price table", () => {
     assert.equal(levelForCell(7, 6), 6);
     assert.equal(levelForCell(0, 3), 0);
     assert.equal(levelForCell(12, 6), 9);
-    assert.deepEqual(LEVEL_CELLS[7], [4, 5, 5, 5, 5, 6, 6]);
+    assert.equal(levelForCell(11, 6), 9);
+    assert.equal(levelForCell(12, 2), 8);
+    // Level 2 chevron: 4f 15–20, 3f 12–25, 2f 15–25
+    assert.equal(levelForCell(3, 0), 2);
+    assert.equal(levelForCell(3, 1), 2);
+    assert.equal(levelForCell(2, 1), 2);
+    assert.equal(levelForCell(2, 4), 2);
+    assert.equal(levelForCell(1, 4), 2);
+    assert.equal(levelForCell(1, 6), 2);
+    // Level 3: 7f 45, 6f 35–50, 5f 40–60, 4f 45
+    assert.equal(levelForCell(6, 0), 3);
+    assert.equal(levelForCell(5, 0), 3);
+    assert.equal(levelForCell(5, 3), 3);
+    assert.equal(levelForCell(4, 3), 3);
+    assert.equal(levelForCell(4, 6), 3);
+    assert.equal(levelForCell(3, 6), 3);
+    // Level 4: 8f 60–70, 7f 50–75, 6f 60–75
+    assert.equal(levelForCell(7, 0), 4);
+    assert.equal(levelForCell(7, 1), 4);
+    assert.equal(levelForCell(6, 1), 4);
+    assert.equal(levelForCell(6, 4), 4);
+    assert.equal(levelForCell(5, 4), 4);
+    assert.equal(levelForCell(5, 6), 4);
+    assert.deepEqual(LEVEL_CELLS[12], [8, 8, 8, 9, 9, 9, 9]);
+  });
+
+  it("reads solo automa count from either payload shape", () => {
+    assert.equal(parseSoloPayload("easy", 4).mibsCount, 4);
+    assert.equal(parseSoloPayload({ difficulty: "hard", mibsCount: "3" }).mibsCount, 3);
   });
 });
 

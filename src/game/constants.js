@@ -90,45 +90,34 @@ export function priceAt(pos) {
 }
 
 /**
- * Cream (C) / dark-green (G) cell shading on the 2023 share table.
- * The two colours form a zigzag staircase, not horizontal row bands.
- */
-export const CELL_SHADE = [
-  "CCCCCCC",
-  "CCCCGGG",
-  "CGGGGGC",
-  "CGGGGCC",
-  "GGCCCCG",
-  "CCCGGGG",
-  "GGGGCCC",
-  "GCCCCGG",
-  "CCGGGGC",
-  "GGGCCCC",
-  "CCCCGGG",
-  "CGGGGGG",
-  "CCCGGGG",
-];
-
-/**
- * Share-price *areas* (levels 0–9). White and dark-green regions snake
- * up the table; a token's cell, not merely its row, decides the level.
- * $110 (row 7, col 6) is in area 6, as in the rulebook.
+ * Share-price areas 0–9 as printed on the 2023 board (1f = bottom row).
+ * Each area is a diagonal chevron, not a full horizontal band.
+ *
+ * Level 2: 4f 15–20, 3f 12–25, 2f 15–25
+ * Level 3: 7f 45, 6f 35–50, 5f 40–60, 4f 45
+ * Level 4: 8f 60–70, 7f 50–75, 6f 60–75
+ * Level 9: 13f 200–240, 12f 210 only
  */
 export const LEVEL_CELLS = [
   [0, 0, 0, 0, 0, 0, 0],
   [1, 1, 1, 1, 2, 2, 2],
-  [1, 2, 2, 2, 2, 2, 3],
-  [1, 2, 2, 2, 2, 3, 3],
-  [2, 2, 3, 3, 3, 3, 4],
-  [3, 3, 3, 4, 4, 4, 4],
-  [4, 4, 4, 4, 5, 5, 5],
-  [4, 5, 5, 5, 5, 6, 6],
-  [5, 5, 6, 6, 6, 6, 7],
-  [6, 6, 6, 7, 7, 7, 7],
-  [7, 7, 7, 7, 8, 8, 8],
-  [7, 8, 8, 8, 8, 8, 8],
-  [7, 7, 7, 9, 9, 9, 9],
+  [1, 2, 2, 2, 2, 1, 1],
+  [2, 2, 1, 1, 1, 1, 3],
+  [1, 1, 1, 3, 3, 3, 3],
+  [3, 3, 3, 3, 4, 4, 4],
+  [3, 4, 4, 4, 4, 5, 5],
+  [4, 4, 5, 5, 5, 5, 6],
+  [5, 5, 5, 5, 6, 6, 6],
+  [5, 5, 5, 5, 6, 6, 6],
+  [5, 6, 6, 6, 6, 7, 7],
+  [6, 6, 7, 7, 8, 8, 9],
+  [8, 8, 8, 9, 9, 9, 9],
 ];
+
+/** Cream on 0 and odd areas, green on even areas — matches the printed zigzag. */
+export const CELL_SHADE = LEVEL_CELLS.map((row) =>
+  row.map((level) => (level === 0 || level % 2 === 1 ? "C" : "G")).join("")
+);
 
 export function levelForCell(row, col) {
   const r = Math.max(0, Math.min(MAX_ROW, row));
@@ -146,6 +135,22 @@ export function parseMibsCount(value) {
   const n = Math.floor(Number(value));
   if (!Number.isFinite(n)) return 1;
   return Math.min(4, Math.max(1, n));
+}
+
+/** Accept `{ difficulty, mibsCount }`, `(difficulty, count)`, or a lone options object. */
+export function parseSoloPayload(a, b) {
+  if (typeof a === "string") {
+    return {
+      difficulty: a === "easy" ? "easy" : "hard",
+      mibsCount: parseMibsCount(b),
+    };
+  }
+  const src = a && typeof a === "object" ? a : {};
+  const raw = src.mibsCount ?? src.count ?? src.automas ?? b;
+  return {
+    difficulty: src.difficulty === "easy" ? "easy" : "hard",
+    mibsCount: parseMibsCount(raw),
+  };
 }
 
 export function boardSpec(playerCount) {

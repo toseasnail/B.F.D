@@ -4,7 +4,7 @@ import { Server } from "socket.io";
 import path from "path";
 import { fileURLToPath } from "url";
 import { applyAction, createGame, publicView } from "../src/game/engine.js";
-import { parseMibsCount } from "../src/game/constants.js";
+import { parseSoloPayload } from "../src/game/constants.js";
 import { decideMibsAction } from "../src/game/mibs.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -122,10 +122,10 @@ io.on("connection", (socket) => {
     socket.emit("you", { id: socket.id, name: info.name });
   });
 
-  socket.on("solo", (payload = {}) => {
+  socket.on("solo", (a, b) => {
     const info = sockets.get(socket.id);
     leaveTable(socket);
-    const automas = parseMibsCount(payload.mibsCount ?? payload.count);
+    const { difficulty, mibsCount: automas } = parseSoloPayload(a, b);
     const table = {
       id: `t_${socket.id}`,
       code: uniqueCode(),
@@ -133,7 +133,7 @@ io.on("connection", (socket) => {
       maxPlayers: 1,
       includeMibs: true,
       mibsCount: automas,
-      mibsDifficulty: payload.difficulty === "easy" ? "easy" : "hard",
+      mibsDifficulty: difficulty,
       seats: [{ id: socket.id, socketId: socket.id, name: info.name }],
       game: null,
       mibsTimer: null,
@@ -142,7 +142,7 @@ io.on("connection", (socket) => {
       players: table.seats,
       includeMibs: true,
       mibsCount: automas,
-      mibsDifficulty: table.mibsDifficulty,
+      mibsDifficulty: difficulty,
     });
     tables.set(table.id, table);
     info.tableId = table.id;
