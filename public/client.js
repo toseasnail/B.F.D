@@ -268,6 +268,7 @@ function renderGame() {
   const yourTurn = v.currentPlayerId === v.you && v.status === "playing";
   const leveledUp = prevLevel !== null && v.level !== prevLevel;
   prevLevel = v.level;
+  const automas = (v.players || []).filter((p) => p.isMibs).length;
   return `
   <div class="wrap play">
     <header class="masthead compact">
@@ -276,7 +277,7 @@ function renderGame() {
         <h1>Black Friday</h1>
       </div>
       <div class="tick">${yourTurn ? "YOUR TICKET" : `${esc(current?.name || "…")} IS TRADING`} · bag ${v.bagCount}${
-        v.mibsCount ? ` · ${v.mibsCount}× M.I.B.S.` : ""
+        automas ? ` · you vs ${automas} M.I.B.S.` : ""
       }</div>
     </header>
     ${state.error ? `<div class="banner">${esc(state.error)}</div>` : ""}
@@ -600,16 +601,11 @@ function onAct(e) {
   const act = e.currentTarget.dataset.act;
   const v = state.view;
   if (act === "solo") {
-    commitName();
     const n = clampMibsCount(e.currentTarget.dataset.mibs);
     const difficulty = e.currentTarget.dataset.diff === "easy" ? "easy" : "hard";
     state.soloMibsCount = n;
     localStorage.setItem("bfd-mibs-count", String(n));
-    // One object only — a second Socket.IO argument was being dropped, so extra automas never sat.
-    socket.emit("solo", {
-      difficulty: `${difficulty}:${n}`,
-      mibsCount: n,
-    });
+    startSoloGame(difficulty, n);
   } else if (act === "wait") {
     commitName();
     const maxPlayers = Number($("#maxPlayers").value);
@@ -674,6 +670,31 @@ function commitName() {
   state.name = name;
   localStorage.setItem("bfd-name", name);
   socket.emit("setName", name);
+}
+
+async function startSoloGame(difficulty, n) {
+  commitName();
+  const payload = {
+    difficulty: `${difficulty}:${n}`,
+    mibsCount: n,
+    name: state.name,
+    socketId: socket.id || state.id,
+  };
+  try {
+    const res = await fetch("/api/solo", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json();
+    if (!res.ok || !data.view) throw new Error(data.error || "solo failed");
+    state.screen = "game";
+    state.view = data.view;
+    state.error = "";
+    render();
+  } catch {
+    socket.emit("solo", `${difficulty}:${n}`);
+  }
 }
 
 function submit() {

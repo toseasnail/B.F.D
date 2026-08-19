@@ -5,12 +5,13 @@ import path from "path";
 import { fileURLToPath } from "url";
 import { applyAction, createGame, publicView } from "../src/game/engine.js";
 import { parseSoloPayload } from "../src/game/constants.js";
-import { decideMibsAction } from "../src/game/mibs.js";
+import { decideLegalMibsAction, guaranteedAction } from "../src/game/mibs.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT) || 3000;
 
 const app = express();
+app.use(express.json());
 app.use(
   express.static(path.join(__dirname, "../public"), {
     etag: false,
@@ -79,19 +80,59 @@ function playMibsIfNeeded(table) {
   if (!game || game.status !== "playing") return;
   const actor = game.players[game.turnIndex];
   if (!actor?.isMibs) return;
+  if (table.mibsTimer) clearTimeout(table.mibsTimer);
   table.mibsTimer = setTimeout(() => {
+    table.mibsTimer = null;
     if (!table.game || table.game.status !== "playing") return;
     const current = table.game.players[table.game.turnIndex];
     if (!current?.isMibs) return;
-    const action = decideMibsAction(table.game, current.id);
-    const result = applyAction(table.game, current.id, action);
+    let action = decideLegalMibsAction(table.game, current.id);
+    let result = applyAction(table.game, current.id, action);
+    if (!result.ok) {
+      action = guaranteedAction(table.game);
+      result = applyAction(table.game, current.id, action);
+    }
     if (!result.ok) {
       console.warn("MIBS illegal action", result.error, action);
       return;
     }
     emitGame(table);
     playMibsIfNeeded(table);
-  }, 750);
+  }, 220);
+}
+
+function startSolo(socket, payload, extraCount) {
+  const info = sockets.get(socket.id);
+  if (!info) return null;
+  if (payload && typeof payload === "object" && payload.name) {
+    info.name = String(payload.name).trim().slice(0, 24) || info.name;
+  }
+  leaveTable(socket);
+  const { difficulty, mibsCount: automas } = parseSoloPayload(payload, extraCount);
+  const table = {
+    id: `t_${socket.id}`,
+    code: uniqueCode(),
+    status: "playing",
+    maxPlayers: 1,
+    includeMibs: true,
+    mibsCount: automas,
+    mibsDifficulty: difficulty,
+    seats: [{ id: socket.id, socketId: socket.id, name: info.name }],
+    game: null,
+    mibsTimer: null,
+  };
+  table.game = createGame({
+    players: table.seats,
+    includeMibs: true,
+    mibsCount: automas,
+    mibsDifficulty: difficulty,
+    difficulty,
+  });
+  tables.set(table.id, table);
+  info.tableId = table.id;
+  emitGame(table);
+  playMibsIfNeeded(table);
+  return table;
 }
 
 function leaveTable(socket) {
@@ -123,31 +164,7 @@ io.on("connection", (socket) => {
   });
 
   socket.on("solo", (a, b) => {
-    const info = sockets.get(socket.id);
-    leaveTable(socket);
-    const { difficulty, mibsCount: automas } = parseSoloPayload(a, b);
-    const table = {
-      id: `t_${socket.id}`,
-      code: uniqueCode(),
-      status: "playing",
-      maxPlayers: 1,
-      includeMibs: true,
-      mibsCount: automas,
-      mibsDifficulty: difficulty,
-      seats: [{ id: socket.id, socketId: socket.id, name: info.name }],
-      game: null,
-      mibsTimer: null,
-    };
-    table.game = createGame({
-      players: table.seats,
-      includeMibs: true,
-      mibsCount: automas,
-      mibsDifficulty: difficulty,
-    });
-    tables.set(table.id, table);
-    info.tableId = table.id;
-    emitGame(table);
-    playMibsIfNeeded(table);
+    startSolo(socket, a, b);
   });
 
   socket.on("wait", ({ maxPlayers = 2, includeMibs = false, mibsDifficulty = "hard" } = {}) => {
@@ -243,6 +260,26 @@ io.on("connection", (socket) => {
   });
 });
 
+app.post("/api/solo", (req, res) => {
+  const socketId = String(req.body?.socketId || "");
+  const socket = io.sockets.sockets.get(socketId);
+  if (!socket) {
+    res.status(400).json({ error: "Connect first, then start a solo desk." });
+    return;
+  }
+  const table = startSolo(socket, req.body);
+  if (!table?.game) {
+    res.status(500).json({ error: "Could not open a solo desk." });
+    return;
+  }
+  res.json({
+    ok: true,
+    mibsCount: table.game.mibsCount,
+    players: table.game.players.map((p) => ({ id: p.id, name: p.name, isMibs: p.isMibs })),
+    view: publicView(table.game, socket.id),
+  });
+});
+
 function waitingView(table) {
   return {
     tableId: table.id,
@@ -270,6 +307,10 @@ function maybeStart(table) {
   playMibsIfNeeded(table);
 }
 
-server.listen(PORT, () => {
-  console.log(`Black Friday Desk listening on http://localhost:${PORT}`);
-});
+export { app, server, io };
+
+if (process.env.BFD_NO_LISTEN !== "1") {
+  server.listen(PORT, () => {
+    console.log(`Black Friday Desk listening on http://localhost:${PORT}`);
+  });
+}

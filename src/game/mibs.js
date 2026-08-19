@@ -7,6 +7,7 @@ import {
   goldPrice,
   shareLimit,
   sharePrice,
+  validateAction,
 } from "./engine.js";
 
 function total(counts) {
@@ -79,7 +80,8 @@ function chooseBuyTrackColor(state, player, boughtColors, easy) {
   let preferred = COLORS.filter((c) => (boughtColors[c] || 0) > 0 && after[c] > 0);
   if (!preferred.length) preferred = COLORS.filter((c) => after[c] > 0);
   if (!preferred.length) preferred = COLORS.filter((c) => state.market[c] > 0);
-  if (easy) return state.rng.pick(preferred);
+  if (!preferred.length) return COLORS[0];
+  if (easy) return state.rng.pick(preferred) || preferred[0];
   return pickByOrder(preferred, [
     (a, b) => mostHeld(player, b) - mostHeld(player, a),
     (a, b) => sharePrice(state, b) - sharePrice(state, a),
@@ -92,7 +94,7 @@ function chooseGoldTrackColor(state, player, easy) {
   const ownedPresent = COLORS.filter((c) => player.shares[c] > 0 && state.market[c] > 0);
   const pool = ownedPresent.length ? ownedPresent : COLORS.filter((c) => state.market[c] > 0);
   if (!pool.length) return COLORS[0];
-  if (easy) return state.rng.pick(pool);
+  if (easy) return state.rng.pick(pool) || pool[0];
   if (ownedPresent.length) {
     return pickByOrder(ownedPresent, [
       (a, b) => mostHeld(player, b) - mostHeld(player, a),
@@ -135,7 +137,7 @@ function chooseSaleTrackColor(state, player, sold, easy) {
     ? soldOnTrack
     : COLORS.filter((c) => track.colored[c] > 0);
   if (!pool.length) return COLORS.find((c) => (sold[c] || 0) > 0) || "purple";
-  if (easy) return state.rng.pick(pool);
+  if (easy) return state.rng.pick(pool) || pool[0];
   if (soldOnTrack.length) {
     return pickByOrder(soldOnTrack, [
       (a, b) => mostHeld(player, a) - mostHeld(player, b),
@@ -216,4 +218,30 @@ export function decideMibsAction(state, playerId) {
     count: 0,
     trackColor: cheapest,
   };
+}
+
+function emptyBasket() {
+  return { purple: 0, yellow: 0, green: 0, blue: 0, white: 0 };
+}
+
+/** Always-legal park: buy zero gold, or dump a sale-track color. */
+export function guaranteedAction(state) {
+  const marketColor = COLORS.find((c) => state.market[c] > 0);
+  if (marketColor) {
+    return { type: "buyGold", count: 0, trackColor: marketColor };
+  }
+  const track = state.saleTracks[state.currentSaleTrack];
+  const saleColor = COLORS.find((c) => (track?.colored[c] || 0) > 0);
+  return {
+    type: "sellShares",
+    sells: emptyBasket(),
+    trackColor: saleColor || "purple",
+  };
+}
+
+/** Prefer the printed M.I.B.S. policy; never return an illegal action. */
+export function decideLegalMibsAction(state, playerId) {
+  const planned = decideMibsAction(state, playerId);
+  if (!validateAction(state, playerId, planned)) return planned;
+  return guaranteedAction(state);
 }
