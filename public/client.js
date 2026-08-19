@@ -675,8 +675,11 @@ function commitName() {
 async function startSoloGame(difficulty, n) {
   commitName();
   const payload = {
-    difficulty: `${difficulty}:${n}`,
+    difficulty,
+    packed: `${difficulty}:${n}`,
     mibsCount: n,
+    count: n,
+    automas: n,
     name: state.name,
     socketId: socket.id || state.id,
   };
@@ -684,7 +687,7 @@ async function startSoloGame(difficulty, n) {
     const res = await fetch("/api/solo", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
+      body: JSON.stringify({ ...payload, difficulty: `${difficulty}:${n}` }),
     });
     const data = await res.json();
     if (!res.ok || !data.view) throw new Error(data.error || "solo failed");
@@ -692,8 +695,10 @@ async function startSoloGame(difficulty, n) {
     state.view = data.view;
     state.error = "";
     render();
+    return;
   } catch {
-    socket.emit("solo", `${difficulty}:${n}`);
+    // Old servers only read the first socket argument. Put the count on that object.
+    socket.emit("solo", payload);
   }
 }
 

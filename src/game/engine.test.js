@@ -88,7 +88,7 @@ describe("price table", () => {
   it("reads solo automa count from a packed object even if a second arg is dropped", () => {
     assert.equal(parseSoloPayload("easy", 4).mibsCount, 4);
     assert.equal(parseSoloPayload("hard:4").mibsCount, 4);
-    assert.equal(parseSoloPayload({ difficulty: "hard:3" }).mibsCount, 3);
+    assert.equal(parseSoloPayload({ packed: "hard:3", mibsCount: 3 }).mibsCount, 3);
     assert.equal(parseSoloPayload({ difficulty: "hard", mibsCount: "4" }).mibsCount, 4);
     const fromClient = parseSoloPayload({ difficulty: "easy:4", mibsCount: 4 });
     assert.equal(fromClient.difficulty, "easy");

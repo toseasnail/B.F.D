@@ -171,7 +171,7 @@ export function parseSoloPayload(a, b) {
   const diffRaw =
     typeof a === "string"
       ? a
-      : src.difficulty ?? src.diff ?? src.mibsDifficulty ?? "hard";
+      : src.packed ?? src.difficulty ?? src.diff ?? src.mibsDifficulty ?? "hard";
   const packed = countFromPacked(diffRaw);
   const raw =
     packed ??

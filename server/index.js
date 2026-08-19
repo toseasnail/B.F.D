@@ -260,6 +260,10 @@ io.on("connection", (socket) => {
   });
 });
 
+app.get("/api/health", (_req, res) => {
+  res.json({ ok: true, solo: true, version: 8 });
+});
+
 app.post("/api/solo", (req, res) => {
   const socketId = String(req.body?.socketId || "");
   const socket = io.sockets.sockets.get(socketId);
