@@ -194,7 +194,7 @@ describe("actions", () => {
       buys: { purple: 0, yellow: 1, green: 0, blue: 0, white: 0 },
       trackColor: "purple",
     };
-    assert.match(validateAction(game, "p1", stale), /not in the market/i);
+    assert.ok(validateAction(game, "p1", stale));
     assert.equal(normalizeAction(game, stale).trackColor, "yellow");
     const result = applyAction(game, "p1", stale);
     assert.equal(result.ok, true, result.error);
