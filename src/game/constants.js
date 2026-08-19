@@ -90,34 +90,47 @@ export function priceAt(pos) {
 }
 
 /**
- * Share-price areas 0–9 as printed on the 2023 board (1f = bottom row).
- * Each area is a diagonal chevron, not a full horizontal band.
+ * Cream (C) / dark-green (G) paper on the 2023 share-price table
+ * (bottom row = 0). Sampled from the official board art; the $8 start
+ * disc on 1f is a marker, not a green area.
  *
- * Level 2: 4f 15–20, 3f 12–25, 2f 15–25
- * Level 3: 7f 45, 6f 35–50, 5f 40–60, 4f 45
- * Level 4: 8f 60–70, 7f 50–75, 6f 60–75
- * Level 9: 13f 200–240, 12f 210 only
+ * Each 4-connected same-color patch is one level. Level 0 is the whole
+ * opening cream (1f plus the leftover around the first green chevron).
+ * That yields exactly the ten areas 0–9, puts $110 in level 6, and puts
+ * level 9 only on 13f $200–240 and 12f $210.
  */
+export const CELL_SHADE = [
+  "CCCCCCC",
+  "CCCCGGG",
+  "CGGGGCC",
+  "GGCCCCG",
+  "CCCGGGG",
+  "GGGGCCC",
+  "GCCCCGG",
+  "CCGGGGC",
+  "GGGCCCC",
+  "CCCCGGG",
+  "CGGGGCC",
+  "GGCCCCG",
+  "CCCGGGG",
+];
+
+/** Level of each printed cream/green patch, numbered from the bottom. */
 export const LEVEL_CELLS = [
   [0, 0, 0, 0, 0, 0, 0],
-  [1, 1, 1, 1, 2, 2, 2],
-  [1, 2, 2, 2, 2, 1, 1],
-  [2, 2, 1, 1, 1, 1, 3],
-  [1, 1, 1, 3, 3, 3, 3],
+  [0, 0, 0, 0, 1, 1, 1],
+  [0, 1, 1, 1, 1, 2, 2],
+  [1, 1, 2, 2, 2, 2, 3],
+  [2, 2, 2, 3, 3, 3, 3],
   [3, 3, 3, 3, 4, 4, 4],
   [3, 4, 4, 4, 4, 5, 5],
   [4, 4, 5, 5, 5, 5, 6],
-  [5, 5, 5, 5, 6, 6, 6],
-  [5, 5, 5, 5, 6, 6, 6],
-  [5, 6, 6, 6, 6, 7, 7],
-  [6, 6, 7, 7, 8, 8, 9],
+  [5, 5, 5, 6, 6, 6, 6],
+  [6, 6, 6, 6, 7, 7, 7],
+  [6, 7, 7, 7, 7, 8, 8],
+  [7, 7, 8, 8, 8, 8, 9],
   [8, 8, 8, 9, 9, 9, 9],
 ];
-
-/** Cream on 0 and odd areas, green on even areas — matches the printed zigzag. */
-export const CELL_SHADE = LEVEL_CELLS.map((row) =>
-  row.map((level) => (level === 0 || level % 2 === 1 ? "C" : "G")).join("")
-);
 
 export function levelForCell(row, col) {
   const r = Math.max(0, Math.min(MAX_ROW, row));
@@ -137,18 +150,39 @@ export function parseMibsCount(value) {
   return Math.min(4, Math.max(1, n));
 }
 
-/** Accept `{ difficulty, mibsCount }`, `(difficulty, count)`, or a lone options object. */
+function parseDifficulty(value) {
+  return String(value || "hard").toLowerCase().includes("easy") ? "easy" : "hard";
+}
+
+function countFromPacked(value) {
+  const raw = String(value ?? "");
+  if (!raw.includes(":")) return null;
+  const n = Math.floor(Number(raw.split(":")[1]));
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+/**
+ * Solo lobby payload. Always send one object from the browser — some
+ * Socket.IO proxies drop a second argument, which used to seat only one automa.
+ * Accepts `{ difficulty: "hard:4", mibsCount: 4 }`, `( "hard", 4 )`, or `"hard:4"`.
+ */
 export function parseSoloPayload(a, b) {
-  if (typeof a === "string") {
-    return {
-      difficulty: a === "easy" ? "easy" : "hard",
-      mibsCount: parseMibsCount(b),
-    };
-  }
-  const src = a && typeof a === "object" ? a : {};
-  const raw = src.mibsCount ?? src.count ?? src.automas ?? b;
+  const src = a && typeof a === "object" && !Array.isArray(a) ? a : {};
+  const diffRaw =
+    typeof a === "string"
+      ? a
+      : src.difficulty ?? src.diff ?? src.mibsDifficulty ?? "hard";
+  const packed = countFromPacked(diffRaw);
+  const raw =
+    packed ??
+    src.mibsCount ??
+    src.count ??
+    src.automas ??
+    src.n ??
+    (typeof a === "number" ? a : null) ??
+    b;
   return {
-    difficulty: src.difficulty === "easy" ? "easy" : "hard",
+    difficulty: parseDifficulty(diffRaw),
     mibsCount: parseMibsCount(raw),
   };
 }

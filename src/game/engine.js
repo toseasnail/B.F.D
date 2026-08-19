@@ -222,7 +222,8 @@ export function createGame({
   players,
   includeMibs = false,
   mibsCount = 1,
-  mibsDifficulty = "hard",
+  mibsDifficulty,
+  difficulty,
   seed = Date.now() % 2 ** 32,
 } = {}) {
   const humans = players.map((p, i) => ({
@@ -239,6 +240,7 @@ export function createGame({
   const withMibs = automas > 0;
   const totalPlayers = humans.length + automas;
   const spec = boardSpec(totalPlayers >= 5 ? 5 : Math.max(2, totalPlayers));
+  const mibsDiff = (mibsDifficulty || difficulty) === "easy" ? "easy" : "hard";
 
   const rng = createRng(seed);
   const state = {
@@ -265,7 +267,7 @@ export function createGame({
     lastPriceChange: null,
     winnerIds: [],
     scores: [],
-    mibsDifficulty: withMibs ? mibsDifficulty : null,
+    mibsDifficulty: withMibs ? mibsDiff : null,
     mibsCount: automas,
   };
 
@@ -281,10 +283,10 @@ export function createGame({
     seated.push(
       makePlayer({
         id: mibsSeatId(i),
-        name: mibsSeatName(i, automas, mibsDifficulty),
+        name: mibsSeatName(i, automas, mibsDiff),
         isMibs: true,
         bonusTile: null,
-        mibsDifficulty,
+        mibsDifficulty: mibsDiff,
       })
     );
   }

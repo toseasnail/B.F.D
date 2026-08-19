@@ -37,25 +37,38 @@ const LEVELS = [
   { shareLimit: 5, goldLimit: 5, drawCount: 11 },
   { shareLimit: 5, goldLimit: 5, drawCount: 12 },
 ];
-/** Token cell → price-level area 0–9. Diagonal chevrons; 1f = bottom. */
+/** Cream/green patches from the printed 2023 board (bottom = 0). Keep in sync with src/game/constants.js. */
+const CELL_SHADE = [
+  "CCCCCCC",
+  "CCCCGGG",
+  "CGGGGCC",
+  "GGCCCCG",
+  "CCCGGGG",
+  "GGGGCCC",
+  "GCCCCGG",
+  "CCGGGGC",
+  "GGGCCCC",
+  "CCCCGGG",
+  "CGGGGCC",
+  "GGCCCCG",
+  "CCCGGGG",
+];
+/** Level of each printed patch. Level 9 is only 13f $200–240 and 12f $210. */
 const LEVEL_CELLS = [
   [0, 0, 0, 0, 0, 0, 0],
-  [1, 1, 1, 1, 2, 2, 2],
-  [1, 2, 2, 2, 2, 1, 1],
-  [2, 2, 1, 1, 1, 1, 3],
-  [1, 1, 1, 3, 3, 3, 3],
+  [0, 0, 0, 0, 1, 1, 1],
+  [0, 1, 1, 1, 1, 2, 2],
+  [1, 1, 2, 2, 2, 2, 3],
+  [2, 2, 2, 3, 3, 3, 3],
   [3, 3, 3, 3, 4, 4, 4],
   [3, 4, 4, 4, 4, 5, 5],
   [4, 4, 5, 5, 5, 5, 6],
-  [5, 5, 5, 5, 6, 6, 6],
-  [5, 5, 5, 5, 6, 6, 6],
-  [5, 6, 6, 6, 6, 7, 7],
-  [6, 6, 7, 7, 8, 8, 9],
+  [5, 5, 5, 6, 6, 6, 6],
+  [6, 6, 6, 6, 7, 7, 7],
+  [6, 7, 7, 7, 7, 8, 8],
+  [7, 7, 8, 8, 8, 8, 9],
   [8, 8, 8, 9, 9, 9, 9],
 ];
-const CELL_SHADE = LEVEL_CELLS.map((row) =>
-  row.map((level) => (level === 0 || level % 2 === 1 ? "C" : "G")).join("")
-);
 
 function levelForCell(row, col) {
   return LEVEL_CELLS[row]?.[col] ?? 0;
@@ -163,22 +176,22 @@ function renderLobby() {
         <h2>Take a seat</h2>
         <p class="muted">Speculate in shares, dump before the crash, and pile up gold. Play the official M.I.B.S. automa or match traders on other computers.</p>
         <label>Your name<br><input id="name" value="${esc(state.name)}" placeholder="Jung-hyeon" maxlength="24"></label>
-        <div>
-          <div class="muted" style="margin-bottom:6px">Solo automas</div>
-          <div class="row">
-            ${[1, 2, 3, 4]
-              .map(
-                (n) =>
-                  `<button type="button" class="btn ${state.soloMibsCount === n ? "gold" : ""}" data-act="mibsCount" data-n="${n}">${n}</button>`
-              )
-              .join("")}
-            <span class="muted">M.I.B.S. chairs</span>
-          </div>
-        </div>
-        <p class="muted">One human plus up to four automas (five chairs max). They sit first and take consecutive turns.</p>
+        <p class="muted">One human plus 1–4 automas (five chairs max). Each button starts immediately with that many M.I.B.S. already seated — they take consecutive turns before you.</p>
         <div class="row">
-          <button class="btn gold" data-act="solo" data-diff="easy" data-mibs="${state.soloMibsCount}">Play vs ${state.soloMibsCount} Easy M.I.B.S.</button>
-          <button class="btn" data-act="solo" data-diff="hard" data-mibs="${state.soloMibsCount}">Play vs ${state.soloMibsCount} Hard M.I.B.S.</button>
+          ${[1, 2, 3, 4]
+            .map(
+              (n) =>
+                `<button type="button" class="btn gold" data-act="solo" data-diff="easy" data-mibs="${n}">${n} Easy</button>`
+            )
+            .join("")}
+        </div>
+        <div class="row">
+          ${[1, 2, 3, 4]
+            .map(
+              (n) =>
+                `<button type="button" class="btn" data-act="solo" data-diff="hard" data-mibs="${n}">${n} Hard</button>`
+            )
+            .join("")}
         </div>
         <hr>
         <h3 class="serif">Waiting for players</h3>
@@ -263,7 +276,7 @@ function renderGame() {
         <h1>Black Friday</h1>
       </div>
       <div class="tick">${yourTurn ? "YOUR TICKET" : `${esc(current?.name || "…")} IS TRADING`} · bag ${v.bagCount}${
-        v.mibsCount > 1 ? ` · ${v.mibsCount}× M.I.B.S.` : ""
+        v.mibsCount ? ` · ${v.mibsCount}× M.I.B.S.` : ""
       }</div>
     </header>
     ${state.error ? `<div class="banner">${esc(state.error)}</div>` : ""}
@@ -386,7 +399,7 @@ function renderPriceGrid(v) {
     </div>`);
   }
   return `<div class="ledger">
-    <div class="ledger-head"><span>Share price table</span><span>zigzag levels 0–9</span></div>
+    <div class="ledger-head"><span>Share price table</span><span>cream / dark-green levels 0–9</span></div>
     <div class="ledger-grid">${cells.join("")}</div>
   </div>`;
 }
@@ -586,16 +599,17 @@ function bind() {
 function onAct(e) {
   const act = e.currentTarget.dataset.act;
   const v = state.view;
-  if (act === "mibsCount") {
-    state.soloMibsCount = clampMibsCount(e.currentTarget.dataset.n);
-    localStorage.setItem("bfd-mibs-count", String(state.soloMibsCount));
-    render();
-  } else if (act === "solo") {
+  if (act === "solo") {
     commitName();
-    const n = clampMibsCount(e.currentTarget.dataset.mibs || state.soloMibsCount);
+    const n = clampMibsCount(e.currentTarget.dataset.mibs);
+    const difficulty = e.currentTarget.dataset.diff === "easy" ? "easy" : "hard";
     state.soloMibsCount = n;
     localStorage.setItem("bfd-mibs-count", String(n));
-    socket.emit("solo", e.currentTarget.dataset.diff, n);
+    // One object only — a second Socket.IO argument was being dropped, so extra automas never sat.
+    socket.emit("solo", {
+      difficulty: `${difficulty}:${n}`,
+      mibsCount: n,
+    });
   } else if (act === "wait") {
     commitName();
     const maxPlayers = Number($("#maxPlayers").value);

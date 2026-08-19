@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { COLORS, LEVEL_CELLS, PRICE_TABLE, START_PRICE_POS, levelForCell, parseSoloPayload, priceAt } from "./constants.js";
+import { COLORS, CELL_SHADE, LEVEL_CELLS, PRICE_TABLE, START_PRICE_POS, levelForCell, parseSoloPayload, priceAt } from "./constants.js";
 import {
   applyAction,
   createGame,
@@ -27,40 +27,82 @@ describe("price table", () => {
     assert.deepEqual(priceChangeDirs(-2), ["down", "left"]);
   });
 
-  it("maps printed zigzag areas, with $110 in level 6", () => {
+  it("maps printed cream/green patches, with $110 in level 6", () => {
     assert.equal(priceAt({ row: 7, col: 6 }), 110);
     assert.equal(levelForCell(7, 6), 6);
     assert.equal(levelForCell(0, 3), 0);
     assert.equal(levelForCell(12, 6), 9);
     assert.equal(levelForCell(11, 6), 9);
+    assert.equal(levelForCell(11, 5), 8);
     assert.equal(levelForCell(12, 2), 8);
-    // Level 2 chevron: 4f 15–20, 3f 12–25, 2f 15–25
-    assert.equal(levelForCell(3, 0), 2);
-    assert.equal(levelForCell(3, 1), 2);
-    assert.equal(levelForCell(2, 1), 2);
-    assert.equal(levelForCell(2, 4), 2);
-    assert.equal(levelForCell(1, 4), 2);
-    assert.equal(levelForCell(1, 6), 2);
-    // Level 3: 7f 45, 6f 35–50, 5f 40–60, 4f 45
-    assert.equal(levelForCell(6, 0), 3);
-    assert.equal(levelForCell(5, 0), 3);
-    assert.equal(levelForCell(5, 3), 3);
-    assert.equal(levelForCell(4, 3), 3);
-    assert.equal(levelForCell(4, 6), 3);
-    assert.equal(levelForCell(3, 6), 3);
-    // Level 4: 8f 60–70, 7f 50–75, 6f 60–75
-    assert.equal(levelForCell(7, 0), 4);
-    assert.equal(levelForCell(7, 1), 4);
-    assert.equal(levelForCell(6, 1), 4);
-    assert.equal(levelForCell(6, 4), 4);
-    assert.equal(levelForCell(5, 4), 4);
-    assert.equal(levelForCell(5, 6), 4);
     assert.deepEqual(LEVEL_CELLS[12], [8, 8, 8, 9, 9, 9, 9]);
+    // First green chevron (2f $15–25, 3f $12–25, 4f $15–20) is level 1;
+    // the leftover cream around it is still the opening level 0.
+    assert.equal(levelForCell(1, 4), 1);
+    assert.equal(levelForCell(1, 6), 1);
+    assert.equal(levelForCell(2, 1), 1);
+    assert.equal(levelForCell(3, 0), 1);
+    assert.equal(levelForCell(3, 1), 1);
+    // Second green: 4f $45, 5f $40–60, 6f $35–50, 7f $45.
+    assert.equal(levelForCell(3, 6), 3);
+    assert.equal(levelForCell(4, 3), 3);
+    assert.equal(levelForCell(5, 0), 3);
+    assert.equal(levelForCell(6, 0), 3);
+    // Following cream: 8f $60–70, 7f $50–75, 6f $60–75.
+    assert.equal(levelForCell(7, 0), 4);
+    assert.equal(levelForCell(6, 1), 4);
+    assert.equal(levelForCell(5, 4), 4);
+    const labeled = CELL_SHADE.map((row) => row.split(""));
+    const seen = labeled.map((row) => row.map(() => -1));
+    let band = 0;
+    const dirs = [
+      [1, 0],
+      [-1, 0],
+      [0, 1],
+      [0, -1],
+    ];
+    for (let r = 0; r < 13; r++) {
+      for (let c = 0; c < 7; c++) {
+        if (seen[r][c] !== -1) continue;
+        const color = labeled[r][c];
+        const q = [[r, c]];
+        seen[r][c] = band;
+        while (q.length) {
+          const [cr, cc] = q.pop();
+          for (const [dr, dc] of dirs) {
+            const nr = cr + dr;
+            const nc = cc + dc;
+            if (nr < 0 || nr > 12 || nc < 0 || nc > 6) continue;
+            if (seen[nr][nc] !== -1 || labeled[nr][nc] !== color) continue;
+            seen[nr][nc] = band;
+            q.push([nr, nc]);
+          }
+        }
+        band += 1;
+      }
+    }
+    assert.equal(band, 10);
+    assert.deepEqual(seen, LEVEL_CELLS);
   });
 
-  it("reads solo automa count from either payload shape", () => {
+  it("reads solo automa count from a packed object even if a second arg is dropped", () => {
     assert.equal(parseSoloPayload("easy", 4).mibsCount, 4);
-    assert.equal(parseSoloPayload({ difficulty: "hard", mibsCount: "3" }).mibsCount, 3);
+    assert.equal(parseSoloPayload("hard:4").mibsCount, 4);
+    assert.equal(parseSoloPayload({ difficulty: "hard:3" }).mibsCount, 3);
+    assert.equal(parseSoloPayload({ difficulty: "hard", mibsCount: "4" }).mibsCount, 4);
+    const fromClient = parseSoloPayload({ difficulty: "easy:4", mibsCount: 4 });
+    assert.equal(fromClient.difficulty, "easy");
+    assert.equal(fromClient.mibsCount, 4);
+    const game = createGame({
+      players: [{ id: "p1", name: "P1" }],
+      ...fromClient,
+      seed: 1,
+    });
+    assert.equal(game.players.filter((p) => p.isMibs).length, 4);
+    assert.deepEqual(
+      game.players.filter((p) => p.isMibs).map((p) => p.name),
+      ["M.I.B.S. 1/4 (Easy)", "M.I.B.S. 2/4 (Easy)", "M.I.B.S. 3/4 (Easy)", "M.I.B.S. 4/4 (Easy)"]
+    );
   });
 });
 

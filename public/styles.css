@@ -213,8 +213,8 @@ input, select {
   padding: 2px 4px;
   border: 1px solid rgba(31, 61, 42, 0.35);
 }
-.cell.shade-c { background: #f4ecd8; }
-.cell.shade-g { background: #c5d4b2; }
+.cell.shade-c { background: #efebe0; }
+.cell.shade-g { background: #97a76c; }
 .cell.current-band { box-shadow: inset 0 0 0 2px #c9a227; }
 .cell.cleared-band { opacity: 0.78; }
 .pv { font-weight: 600; }
