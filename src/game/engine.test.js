@@ -1,12 +1,13 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { COLORS, CELL_SHADE, LEVEL_CELLS, PRICE_TABLE, START_PRICE_POS, levelForCell, parseSoloPayload, priceAt } from "./constants.js";
+import { COLORS, CELL_SHADE, DESK_VERSION, LEVEL_CELLS, PRICE_TABLE, START_PRICE_POS, levelForCell, parseSoloPayload, priceAt } from "./constants.js";
 import {
   applyAction,
   createGame,
   goldPrice,
   normalizeAction,
   priceChangeDirs,
+  publicView,
   sharePrice,
   skipTurn,
   validateAction,
@@ -244,6 +245,12 @@ describe("share-sale tracks", () => {
     assert.equal(game.currentSaleTrack, 1, "stay on the center track");
     assert.ok(coloredOn(game.saleTracks[1]) > 0, "center track restocks again");
     assert.equal(coloredOn(game.saleTracks[2]), 0);
+
+    const track3After = coloredOn(game.saleTracks[2]);
+    triggerSalePriceChange(game);
+    triggerSalePriceChange(game);
+    assert.equal(coloredOn(game.saleTracks[2]), track3After, "track 3 never gains chips again");
+    assert.equal(publicView(game, "p1").deskVersion, DESK_VERSION);
   });
 });
 

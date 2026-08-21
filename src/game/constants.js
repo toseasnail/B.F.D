@@ -1,5 +1,8 @@
 export const COLORS = ["purple", "yellow", "green", "blue", "white"];
 
+/** Bump when the live desk must be distinguishable from an old Render process. */
+export const DESK_VERSION = 15;
+
 export const COLOR_ORDER = [...COLORS];
 
 export const COLOR_HEX = {

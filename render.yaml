@@ -1,7 +1,11 @@
+# GitHub default branch is still main (the empty first commit). Until PR #1
+# is merged, point this Render web service at cursor/black-friday-online-2953
+# and click Manual Deploy after each push. Confirm /api/health version is 15.
 services:
   - type: web
     name: black-friday-desk
     runtime: node
+    branch: cursor/black-friday-online-2953
     buildCommand: npm install
     startCommand: node server/index.js
     healthCheckPath: /api/health

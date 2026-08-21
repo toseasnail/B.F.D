@@ -3,6 +3,7 @@ process.env.BFD_NO_LISTEN = "1";
 import { after, before, describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { io as ioc } from "socket.io-client";
+import { DESK_VERSION } from "./constants.js";
 
 const { server, io } = await import("../../server/index.js");
 
@@ -139,5 +140,33 @@ describe("solo transport", () => {
     });
     assert.notEqual(after.view.currentPlayerId, playerId);
     socket2.close();
+  });
+
+  it("health reports the live desk version and does not cache", async () => {
+    const res = await fetch(`http://127.0.0.1:${port}/api/health`);
+    const data = await res.json();
+    assert.equal(data.version, DESK_VERSION);
+    assert.match(String(res.headers.get("cache-control") || ""), /no-store/);
+  });
+
+  it("lobby payload includes the desk version", async () => {
+    const socket = ioc(`http://127.0.0.1:${port}`, {
+      transports: ["websocket"],
+      autoConnect: false,
+    });
+    const lobby = await new Promise((resolve, reject) => {
+      const t = setTimeout(() => reject(new Error("no lobby")), 4000);
+      socket.once("lobby", (payload) => {
+        clearTimeout(t);
+        resolve(payload);
+      });
+      socket.once("connect_error", (err) => {
+        clearTimeout(t);
+        reject(err);
+      });
+      socket.connect();
+    });
+    assert.equal(lobby.version, DESK_VERSION);
+    socket.close();
   });
 });

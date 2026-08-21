@@ -16,6 +16,7 @@ import {
   START_PRICE_POS,
   boardSpec,
   cloneCounts,
+  DESK_VERSION,
   emptyColorCounts,
   levelForCell,
   parseMibsCount,
@@ -869,6 +870,7 @@ export function publicView(state, viewerId) {
       price: sharePrice(state, color),
     };
   }
+  clone.deskVersion = DESK_VERSION;
   clone.you = viewerId;
   clone.players = state.players.map((p) => {
     const hidden = p.id !== viewerId && !p.isMibs && state.status === "playing";

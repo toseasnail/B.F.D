@@ -69,6 +69,8 @@ const LEVEL_CELLS = [
   [7, 7, 8, 8, 8, 8, 9],
   [8, 8, 8, 9, 9, 9, 9],
 ];
+/** Keep in sync with src/game/constants.js DESK_VERSION. */
+const DESK_VERSION = 15;
 
 function levelForCell(row, col) {
   return LEVEL_CELLS[row]?.[col] ?? 0;
@@ -111,6 +113,7 @@ const state = {
   tableId: null,
   error: "",
   busy: false,
+  gotServer: false,
   stampTimer: null,
   draft: emptyDraft(),
 };
@@ -170,6 +173,7 @@ socket.on("you", ({ name }) => {
 });
 socket.on("lobby", (lobby) => {
   state.lobby = lobby;
+  state.gotServer = true;
   if (state.screen === "game" && state.view) return;
   if (state.screen !== "waiting") state.screen = "lobby";
   render();
@@ -182,6 +186,7 @@ socket.on("waiting", (waiting) => {
 });
 socket.on("game", ({ view, tableId }) => {
   clearBusy();
+  state.gotServer = true;
   state.screen = "game";
   state.view = view;
   state.tableId = tableId || state.tableId;
@@ -207,6 +212,18 @@ function render() {
   bind();
 }
 
+function deskBanner() {
+  const server = state.view?.deskVersion ?? state.lobby?.version;
+  if (server == null) {
+    if (!state.gotServer) return `<p class="desk-ver">Desk ${DESK_VERSION}</p>`;
+    return `<div class="banner">This tab is Desk ${DESK_VERSION}, but the live server did not send a version. Render is still an old process. In Render: set the branch to cursor/black-friday-online-2953 (GitHub main is still the empty first commit), click Manual Deploy, hard-refresh, then start a new game.</div>`;
+  }
+  if (Number(server) !== DESK_VERSION) {
+    return `<div class="banner">This tab loaded Desk ${DESK_VERSION} files, but the live server is Desk ${esc(String(server))}. Redeploy that branch on Render, then start a new game.</div>`;
+  }
+  return `<p class="desk-ver">Desk ${DESK_VERSION} · center-only restock after track 3</p>`;
+}
+
 function renderLobby() {
   const tables = state.lobby.tables || [];
   return `
@@ -216,8 +233,9 @@ function renderLobby() {
         <small>B.F.D.</small>
         <h1>Black Friday Desk</h1>
       </div>
-      <div class="tick">GOLD 20 ↗  CRASH AT 100</div>
+      <div class="tick">GOLD 20 ↗  CRASH AT 100 · DESK ${DESK_VERSION}</div>
     </header>
+    ${deskBanner()}
     ${state.error ? `<div class="banner">${esc(state.error)}</div>` : ""}
     <div class="lobby-grid">
       <section class="panel stack">
@@ -332,8 +350,9 @@ function renderGame() {
       </div>
       <div class="tick">${tick} · bag ${v.bagCount}${
         automas ? ` · you vs ${automas} M.I.B.S.` : ""
-      }</div>
+      } · desk ${v.deskVersion || DESK_VERSION}</div>
     </header>
+    ${deskBanner()}
     ${state.error ? `<div class="banner">${esc(state.error)}</div>` : ""}
     <div class="felt ${leveledUp ? "level-changed" : ""}">
       <div class="west">
@@ -496,6 +515,14 @@ function renderTracks(v) {
   };
   const buySize = v.spec?.purchaseTrackSize || 5;
   const goldSize = v.spec?.goldTrackSize || 5;
+  const phase = v.salePhase || (v.saleRestockLoop ? "center" : "t1");
+  const names = ["1 (once)", "2 (center)", "3 (once)"];
+  const statuses = {
+    t1: ["in play", "next — do not restock yet", "opening chips, not in play"],
+    t2: ["spent — never restocked", "in play", "opening chips, not in play"],
+    t3: ["spent — never restocked", "empty until 3 is spent", "in play"],
+    center: ["spent — never restocked", "in play — restocks from market", "spent — never restocked"],
+  }[phase];
   const sale = v.saleTracks
     .map((t, i) => {
       const chips = [];
@@ -508,20 +535,25 @@ function renderTracks(v) {
         chips.push(have > 0 ? chip(c) : `<span class="slot sale-slot"></span>`);
         chips.push(have > 1 ? chip(c) : `<span class="slot sale-slot"></span>`);
       }
-      const names = ["1 (once)", "2 (center)", "3 (once)"];
-      return `<div class="sale-row ${i === v.currentSaleTrack ? "current-sale" : ""}">
-        <span class="sale-lbl">${names[i]}</span>
+      const colored = COLORS.reduce((sum, c) => sum + (t.colored[c] || 0), 0);
+      const rowClass =
+        i === v.currentSaleTrack ? "current-sale" : statuses[i].startsWith("spent") ? "spent-sale" : "waiting-sale";
+      return `<div class="sale-row ${rowClass}">
+        <div class="sale-meta">
+          <span class="sale-lbl">${names[i]}</span>
+          <span class="sale-status">${statuses[i]} · ${colored}c ${t.black}b</span>
+        </div>
         <div class="chips">${chips.join("")}</div>
       </div>`;
     })
     .join("");
   const saleNote = {
-    t1: "Opening: track 1. Next 2, then 3. Nothing restocks yet.",
-    t2: "Opening: track 2. After this price change, use track 3. Do not restock the center yet.",
-    t3: "Opening: track 3. After this price change, leftover chips go in the bag and only the center (2) restocks from the market. Track 3 stays empty.",
+    t1: "Opening: track 1. Next 2, then 3. Tracks 2 and 3 still hold their setup chips — that is not a restock.",
+    t2: "Opening: track 2. After this price change, use track 3. Track 3 still has its original chips. Do not restock the center yet.",
+    t3: "Opening: track 3. After this price change, leftover chips go in the bag and only the center (2) restocks from the market. Track 3 stays empty forever.",
     center:
       "Late game: only the center (2) restocks from the market (2 of each color, 2 black from the bank). Track 3 is never restocked.",
-  }[v.salePhase || (v.saleRestockLoop ? "center" : "t1")];
+  }[phase];
   return `<div class="board-tracks">
     <div class="sale-block"><span class="east-lbl">Share sale</span>${sale}<p class="sale-note">${saleNote}</p></div>
     <div><span class="east-lbl">Share purchase</span>${slots(v.purchaseTrack, buySize)}</div>

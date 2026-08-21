@@ -104,6 +104,11 @@ input, select {
   padding: 10px 14px;
   margin-bottom: 16px;
 }
+.desk-ver {
+  margin: 0 0 12px;
+  font-size: 12px;
+  color: #5c5346;
+}
 
 .felt {
   display: grid;
@@ -393,14 +398,25 @@ input, select {
   border: 1px solid rgba(31,61,42,0.25);
 }
 .sale-row.current-sale { outline: 2px solid #c9a227; background: #fff6d8; }
+.sale-row.spent-sale { opacity: 0.55; }
+.sale-row.waiting-sale { background: rgba(255,255,255,0.18); }
 .sale-row.can-restock { min-height: 28px; }
 .sale-slot { width: 16px; height: 12px; }
+.sale-meta {
+  width: 148px;
+  flex-shrink: 0;
+  line-height: 1.15;
+}
 .sale-lbl {
   font-family: "IBM Plex Mono", monospace;
   font-size: 10px;
   font-weight: 700;
-  width: 72px;
-  flex-shrink: 0;
+  display: block;
+}
+.sale-status {
+  display: block;
+  font-size: 9px;
+  color: #5c5346;
 }
 .sale-note {
   margin: 6px 0 0;

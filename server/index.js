@@ -4,7 +4,7 @@ import { Server } from "socket.io";
 import path from "path";
 import { fileURLToPath } from "url";
 import { applyAction, createGame, publicView, skipTurn } from "../src/game/engine.js";
-import { parseSoloPayload } from "../src/game/constants.js";
+import { DESK_VERSION, parseSoloPayload } from "../src/game/constants.js";
 import { decideLegalMibsAction, guaranteedAction } from "../src/game/mibs.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -78,8 +78,23 @@ function tableForPlayer(playerId) {
   return [...tables.values()].find((t) => t.seats.some((s) => s.id === playerId)) || null;
 }
 
+function deskBuild() {
+  return {
+    version: DESK_VERSION,
+    git: process.env.RENDER_GIT_COMMIT || null,
+    branch: process.env.RENDER_GIT_BRANCH || null,
+  };
+}
+
+function noStore(res) {
+  res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
+  res.setHeader("Pragma", "no-cache");
+  res.setHeader("Expires", "0");
+}
+
 function lobbyPayload() {
   return {
+    ...deskBuild(),
     tables: [...tables.values()]
       .filter((t) => t.status === "waiting")
       .map((t) => ({
@@ -391,7 +406,8 @@ io.on("connection", (socket) => {
 });
 
 app.get("/api/health", (_req, res) => {
-  res.json({ ok: true, solo: true, version: 14 });
+  noStore(res);
+  res.json({ ok: true, solo: true, ...deskBuild() });
 });
 
 app.post("/api/solo", (req, res) => {
@@ -417,6 +433,7 @@ app.post("/api/solo", (req, res) => {
 });
 
 app.get("*", (_req, res) => {
+  noStore(res);
   res.sendFile(path.join(__dirname, "../public/index.html"));
 });
 
