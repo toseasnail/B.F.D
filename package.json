@@ -1,0 +1,20 @@
+{
+  "name": "black-friday-online",
+  "version": "1.0.0",
+  "description": "Online Black Friday (2023) — play vs M.I.B.S. or match with other players.",
+  "type": "module",
+  "main": "server/index.js",
+  "scripts": {
+    "start": "node server/index.js",
+    "dev": "node --watch server/index.js",
+    "test": "node --test src/game/*.test.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "socket.io": "^4.8.1",
+    "socket.io-client": "^4.8.1"
+  }
+}
