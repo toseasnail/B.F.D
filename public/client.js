@@ -70,7 +70,7 @@ const LEVEL_CELLS = [
   [8, 8, 8, 9, 9, 9, 9],
 ];
 /** Keep in sync with src/game/constants.js DESK_VERSION. */
-const DESK_VERSION = 15;
+const DESK_VERSION = 16;
 
 function levelForCell(row, col) {
   return LEVEL_CELLS[row]?.[col] ?? 0;
@@ -597,10 +597,32 @@ function renderActions(v, me, yourTurn) {
   const mibsTurn = Boolean(current?.isMibs) && v.status === "playing";
   const canStamp = yourTurn && !state.busy && socket.connected;
   const waitNote = yourTurn
-    ? `<p class="muted">Pick one action. Zero is legal — it still moves a share onto a track. Click a color to add, right-click to remove.</p>`
+    ? `<p class="muted">Pick one action. Zero is legal — it still moves a share onto a track. Use + and − to set the amount.</p>`
     : mibsTurn
       ? `<p class="muted">M.I.B.S. is stamping… your ticket unlocks when it is your turn again.</p>`
       : `<p class="muted">Wait for your turn.</p>`;
+  const qtyDisabled = yourTurn && !state.busy ? "" : "disabled";
+  const shareField = d.type === "buyShares" ? "buys" : "sells";
+  const shareRows =
+    d.type === "buyGold"
+      ? `<div class="row"><button class="btn ghost" data-act="goldMinus" ${qtyDisabled}>-</button>
+           <span class="qty">${d.count} / ${gLimit}</span>
+           <button class="btn ghost" data-act="goldPlus" ${qtyDisabled}>+</button>
+           <span>at $${v.goldPrice}</span></div>`
+      : COLORS.map((c) => {
+          const held = me?.shares?.[c] ?? 0;
+          const extra =
+            d.type === "buyShares"
+              ? `mkt ${v.market[c]}`
+              : `held ${held}`;
+          return `<div class="row share-qty">
+            <span class="briefcase" style="background:${COLOR_HEX[c]}"></span>
+            <span>${c} $${v.pricesDisplay[c].price} · ${extra}</span>
+            <button class="btn ghost" data-act="shareMinus" data-color="${c}" ${qtyDisabled}>-</button>
+            <span class="qty">${d[shareField][c]}</span>
+            <button class="btn ghost" data-act="sharePlus" data-color="${c}" ${qtyDisabled}>+</button>
+          </div>`;
+        }).join("");
   return `<section class="actions">
     <h3 class="serif">Ticket</h3>
     ${waitNote}
@@ -613,20 +635,7 @@ function renderActions(v, me, yourTurn) {
         )
         .join("")}
     </div>
-    ${
-      d.type !== "buyGold"
-        ? COLORS.map((c) => {
-            const field = d.type === "buyShares" ? "buys" : "sells";
-            return `<button class="color-btn" style="background:${COLOR_HEX[c]}" data-act="inc" data-color="${c}" ${yourTurn && !state.busy ? "" : "disabled"}>
-              ${c} $${v.pricesDisplay[c].price} · mkt ${v.market[c]}
-              <span class="qty">${d[field][c]}</span>
-            </button>`;
-          }).join("")
-        : `<div class="row"><button class="btn ghost" data-act="goldMinus" ${yourTurn && !state.busy ? "" : "disabled"}>-</button>
-           <span class="qty">${d.count} / ${gLimit}</span>
-           <button class="btn ghost" data-act="goldPlus" ${yourTurn && !state.busy ? "" : "disabled"}>+</button>
-           <span>at $${v.goldPrice}</span></div>`
-    }
+    ${shareRows}
     <label>Track color
       <select id="trackColor">${COLORS.map((c) => `<option ${d.trackColor === c ? "selected" : ""}>${c}</option>`).join("")}</select>
     </label>
@@ -685,7 +694,6 @@ function renderOverlay(v) {
 function bind() {
   document.querySelectorAll("[data-act]").forEach((el) => {
     el.addEventListener("click", onAct);
-    if (el.dataset.act === "inc") el.addEventListener("contextmenu", onAct);
   });
   const name = $("#name");
   if (name) {
@@ -749,19 +757,18 @@ function onAct(e) {
     state.draft.sells = emptyCounts();
     state.draft.count = 0;
     render();
-  } else if (act === "inc") {
+  } else if (act === "sharePlus" || act === "shareMinus") {
     const color = e.currentTarget.dataset.color;
     const field = state.draft.type === "buyShares" ? "buys" : "sells";
     const extra = state.draft.bonus === "extraBuy" || state.draft.bonus === "extraSell" ? 1 : 0;
     const limit = (v?.levelInfo.shareLimit || 1) + extra;
     const total = COLORS.reduce((s, c) => s + state.draft[field][c], 0);
-    if (e.type === "contextmenu" || e.shiftKey || (state.draft[field][color] > 0 && total >= limit)) {
-      e.preventDefault();
+    if (act === "shareMinus") {
       state.draft[field][color] = Math.max(0, state.draft[field][color] - 1);
     } else if (total < limit) {
       state.draft[field][color] += 1;
+      state.draft.trackColor = color;
     }
-    state.draft.trackColor = color;
     render();
   } else if (act === "goldPlus") {
     const extra = state.draft.bonus === "extraGold" ? 1 : 0;
